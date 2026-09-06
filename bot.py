@@ -99,7 +99,7 @@ def send_signal(code, label):
 # ------------------------------------------------------------ price data
 def klines(symbol, start_ms=None, limit=1000):
     """Binance USD-M futures 1-minute closes. Public, no API key."""
-    url = ("https://fapi.binance.com/fapi/v1/klines"
+    url = ("https://data-api.binance.vision/api/v3/klines"
            f"?symbol={symbol}&interval=1m&limit={limit}")
     if start_ms:
         url += f"&startTime={start_ms}"
