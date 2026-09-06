@@ -26,3 +26,21 @@
 2026-09-06 10:28:24Z  SOLUSDT: 26 candles, no new bricks, price 106.7300
 2026-09-06 10:28:24Z  SOLUSDT: flat. brick 105.8833  channel 60.5129 .. 108.7422
 2026-09-06 10:28:24Z  done
+2026-09-06 10:36:29Z  ============================================================
+2026-09-06 10:36:29Z  SOLUSDT: 8 candles, no new bricks, price 106.5000
+2026-09-06 10:36:29Z  SOLUSDT: flat. brick 105.8833  channel 60.5129 .. 108.7422
+2026-09-06 10:36:29Z  XRPUSDT: first run - pulling 400 days of history
+2026-09-06 10:37:13Z    ...50,000 candles
+2026-09-06 10:37:56Z    ...100,000 candles
+2026-09-06 10:38:39Z    ...150,000 candles
+2026-09-06 10:39:22Z    ...200,000 candles
+2026-09-06 10:40:08Z    ...250,000 candles
+2026-09-06 10:40:52Z    ...300,000 candles
+2026-09-06 10:41:35Z    ...350,000 candles
+2026-09-06 10:42:18Z    ...400,000 candles
+2026-09-06 10:43:01Z    ...450,000 candles
+2026-09-06 10:43:44Z    ...500,000 candles
+2026-09-06 10:44:33Z    ...550,000 candles
+2026-09-06 10:44:56Z  XRPUSDT: 576,000 candles -> 355 bricks
+2026-09-06 10:44:56Z  XRPUSDT: warm-up complete, starting FLAT
+2026-09-06 10:44:56Z  done
