@@ -1,0 +1,7 @@
+2026-09-06 09:54:23Z  ============================================================
+2026-09-06 09:54:23Z  DRY RUN MODE - no signals will actually be sent
+2026-09-06 09:54:23Z  SOLUSDT: first run - pulling 400 days of history
+2026-09-06 09:54:23Z    retry 1 after error: HTTP Error 451: 
+2026-09-06 09:54:26Z    retry 2 after error: HTTP Error 451: 
+2026-09-06 09:54:29Z  SOLUSDT: ERROR HTTPError: HTTP Error 451: 
+2026-09-06 09:54:29Z  done
