@@ -1,0 +1,55 @@
+name: renko bot
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (do not send signals)'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: renko-bot
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run bot
+        env:
+          SOL_ENTER_LONG:  ${{ secrets.SOL_ENTER_LONG }}
+          SOL_ENTER_SHORT: ${{ secrets.SOL_ENTER_SHORT }}
+          SOL_EXIT_ALL:    ${{ secrets.SOL_EXIT_ALL }}
+          XRP_ENTER_LONG:  ${{ secrets.XRP_ENTER_LONG }}
+          XRP_ENTER_SHORT: ${{ secrets.XRP_ENTER_SHORT }}
+          XRP_EXIT_ALL:    ${{ secrets.XRP_EXIT_ALL }}
+          DRY_RUN:         ${{ github.event.inputs.dry_run }}
+        run: python bot.py
+
+      - name: Save state
+        run: |
+          git config user.name  "renko-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add state.json trades.log 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "nothing changed"
+          else
+            git commit -m "state $(date -u '+%Y-%m-%d %H:%M')Z"
+            for i in 1 2 3; do
+              git pull --rebase --autostash && git push && break
+              echo "push retry $i"
+              sleep 5
+            done
+          fi
