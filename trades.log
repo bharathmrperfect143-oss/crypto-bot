@@ -5,3 +5,20 @@
 2026-09-06 09:54:26Z    retry 2 after error: HTTP Error 451: 
 2026-09-06 09:54:29Z  SOLUSDT: ERROR HTTPError: HTTP Error 451: 
 2026-09-06 09:54:29Z  done
+2026-09-06 10:02:46Z  ============================================================
+2026-09-06 10:02:46Z  DRY RUN MODE - no signals will actually be sent
+2026-09-06 10:02:46Z  SOLUSDT: first run - pulling 400 days of history
+2026-09-06 10:03:52Z    ...50,000 candles
+2026-09-06 10:04:57Z    ...100,000 candles
+2026-09-06 10:06:02Z    ...150,000 candles
+2026-09-06 10:07:07Z    ...200,000 candles
+2026-09-06 10:08:12Z    ...250,000 candles
+2026-09-06 10:09:18Z    ...300,000 candles
+2026-09-06 10:10:24Z    ...350,000 candles
+2026-09-06 10:11:28Z    ...400,000 candles
+2026-09-06 10:12:32Z    ...450,000 candles
+2026-09-06 10:13:37Z    ...500,000 candles
+2026-09-06 10:14:42Z    ...550,000 candles
+2026-09-06 10:15:17Z  SOLUSDT: 576,000 candles -> 368 bricks
+2026-09-06 10:15:17Z  SOLUSDT: warm-up complete, starting FLAT
+2026-09-06 10:15:17Z  done
