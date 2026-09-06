@@ -37,7 +37,7 @@ WEBHOOK = "https://3c.wtalerts.com/bot/other"
 MARKETS = {
     "SOLUSDT": ("SOL_ENTER_LONG", "SOL_ENTER_SHORT", "SOL_EXIT_ALL"),
     # add more later, e.g.
-    # "XRPUSDT": ("XRP_ENTER_LONG", "XRP_ENTER_SHORT", "XRP_EXIT_ALL"),
+    "XRPUSDT": ("XRP_ENTER_LONG", "XRP_ENTER_SHORT", "XRP_EXIT_ALL"),
 }
 
 STATE_FILE = "state.json"
