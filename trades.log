@@ -2025,3 +2025,11 @@
 2026-09-09 22:56:21Z  B/SOLUSDT: 12 min, hour not complete yet, price 100.8300
 2026-09-09 22:56:22Z  B/XRPUSDT: 12 min, hour not complete yet, price 1.3823
 2026-09-09 22:56:22Z  done
+2026-09-09 23:13:17Z  ============================================================
+2026-09-09 23:13:18Z  A/SOLUSDT: flat. brick 105.8833  channel 62.1468 .. 145.7716
+2026-09-09 23:13:18Z  A/XRPUSDT: flat. brick 1.4521  channel 1.0000 .. 2.3456
+2026-09-09 23:13:19Z  B/SOLUSDT: LONG entry - both timeframes bullish, brick 100.8881
+2026-09-09 23:13:19Z    SENT B/SOLUSDT ENTER-LONG  (http 200)
+2026-09-09 23:13:19Z  B/SOLUSDT: holding LONG. fast +1  slow +1  brick 100.8881  trades 1
+2026-09-09 23:13:20Z  B/XRPUSDT: warming up - fast 85 bricks, slow 85 bricks
+2026-09-09 23:13:20Z  done
