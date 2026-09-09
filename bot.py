@@ -23,6 +23,19 @@ to +7.4%.
 Strategy A keeps its existing bots and capital. Strategy B gets its own
 3Commas bots at roughly a quarter of A's trade size.
 
+BAR RESOLUTION - THIS MATTERS
+    Both backtests resample price to HOURLY closes before building Renko
+    bricks. This bot therefore does the same. Building bricks from raw
+    1-minute closes produces 28-48% MORE bricks - extra bricks created by
+    intra-hour wiggles that an hourly close smooths away - and that is a
+    different strategy with different trades and a different return.
+    Measured on a test series: minute bricks gave 35 trades and +20.5%,
+    hourly bricks gave 20 trades and +128.4%.
+
+    So: minute klines are downloaded, then reduced to the last close of
+    each COMPLETED hour. A partial hour is carried in state until it
+    completes, so nothing is lost between runs.
+
 State is kept per strategy in state.json, so the two never interfere.
 
 DO NOT change the parameters during the forward test.
@@ -144,6 +157,7 @@ def klines(symbol, start_ms=None, limit=1000):
 
 
 def fetch_history(symbol, days):
+    """Returns [(open_time_ms, close), ...] sorted, plus the last timestamp."""
     now_ms = int(time.time() * 1000)
     start = now_ms - days * 24 * 60 * 60 * 1000
     out = []
@@ -161,9 +175,38 @@ def fetch_history(symbol, days):
             log(f"    ...{len(out):,} candles")
         time.sleep(0.15)
     dedup = {}
-    for t, c in out:
-        dedup[t] = c
-    return [dedup[t] for t in sorted(dedup)], (max(dedup) if dedup else 0)
+    for ts, c in out:
+        dedup[ts] = c
+    keys = sorted(dedup)
+    return [(k, dedup[k]) for k in keys], (keys[-1] if keys else 0)
+
+
+HOUR_MS = 3_600_000
+
+
+def to_hourly(pairs, st):
+    """Reduce 1-minute (time, close) pairs to the last close of each
+    COMPLETED hour - the same thing pandas resample('1h').last() does in
+    the backtests.
+
+    The in-progress hour is carried in state (hour_bucket / hour_close)
+    so a partial hour at the end of one run is completed by the next.
+    """
+    out = []
+    bucket = st.get("hour_bucket")
+    bclose = st.get("hour_close")
+    for ts, c in pairs:
+        h = ts // HOUR_MS
+        if bucket is None:
+            bucket, bclose = h, c
+        elif h == bucket:
+            bclose = c
+        else:
+            out.append(bclose)          # previous hour is now complete
+            bucket, bclose = h, c
+    st["hour_bucket"] = bucket
+    st["hour_close"] = bclose
+    return out
 
 
 # ----------------------------------------------------------------- renko
@@ -255,108 +298,141 @@ def codes_for(names):
 
 # --------------------------------------------------------- strategy A
 def run_strategy_a(symbol, names, st, new_closes, price):
+    """Strategy A: 160-brick channel breakout with a trailing exit.
+
+    IMPORTANT: this evaluates EVERY newly formed brick in order, not just
+    the most recent one. If two bricks form between runs - which happens
+    during fast moves, and whenever GitHub delays a scheduled run - only
+    checking the last brick silently skips entries and exits that the
+    backtest would have taken.
+    """
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"A/{symbol}"
 
     fresh, anchor, d = build_bricks(new_closes, A_BOX, REVERSAL,
                                     st["anchor"], st["direction"])
     st["anchor"], st["direction"] = anchor, d
-    if fresh:
-        st["bricks"] = (st["bricks"] + fresh)[-(A_BREAKOUT_N * 3):]
 
-    bricks = st["bricks"]
-    if len(bricks) < A_BREAKOUT_N + 1:
-        log(f"{tag}: only {len(bricks)} bricks, need {A_BREAKOUT_N + 1}")
+    if not fresh:
+        bricks = st["bricks"]
+        if len(bricks) >= A_BREAKOUT_N + 1:
+            window = bricks[-(A_BREAKOUT_N + 1):-1]
+            side = {0: "flat", 1: "holding LONG", -1: "holding SHORT"}[st["position"]]
+            log(f"{tag}: {side}. brick {bricks[-1]:.4f}  "
+                f"channel {min(window):.4f} .. {max(window):.4f}")
         return
 
-    window = bricks[-(A_BREAKOUT_N + 1):-1]     # excludes the newest brick
-    hi, lo = max(window), min(window)
-    latest = bricks[-1]
-    pos = st["position"]
     r = A_TRAIL / 100.0
+    if len(fresh) > 1:
+        log(f"{tag}: {len(fresh)} bricks formed this run - evaluating each")
 
-    if pos == 1:
-        st["best"] = max(st["best"], latest)
-        if latest <= st["best"] * (1 - r):
-            log(f"{tag}: LONG exit - {latest:.4f} <= {st['best']*(1-r):.4f}")
-            if send_signal(exit_all, f"{tag} EXIT-ALL"):
-                st.update(position=0, best=0.0); pos = 0
-    elif pos == -1:
-        st["best"] = min(st["best"], latest)
-        if latest >= st["best"] * (1 + r):
-            log(f"{tag}: SHORT exit - {latest:.4f} >= {st['best']*(1+r):.4f}")
-            if send_signal(exit_all, f"{tag} EXIT-ALL"):
-                st.update(position=0, best=0.0); pos = 0
+    for brick in fresh:
+        st["bricks"] = (st["bricks"] + [brick])[-(A_BREAKOUT_N * 3):]
+        bricks = st["bricks"]
+        if len(bricks) < A_BREAKOUT_N + 1:
+            continue
 
-    if pos == 0:
-        if latest >= hi:
-            log(f"{tag}: LONG entry - {latest:.4f} >= {A_BREAKOUT_N}-brick high {hi:.4f}")
-            if send_signal(enter_long, f"{tag} ENTER-LONG"):
-                st.update(position=1, best=latest, trades=st["trades"] + 1)
-        elif latest <= lo:
-            log(f"{tag}: SHORT entry - {latest:.4f} <= {A_BREAKOUT_N}-brick low {lo:.4f}")
-            if send_signal(enter_short, f"{tag} ENTER-SHORT"):
-                st.update(position=-1, best=latest, trades=st["trades"] + 1)
-        else:
-            log(f"{tag}: flat. brick {latest:.4f}  channel {lo:.4f} .. {hi:.4f}")
-    else:
-        side = "LONG" if st["position"] == 1 else "SHORT"
-        log(f"{tag}: holding {side}, brick {latest:.4f}, best {st['best']:.4f}, "
+        window = bricks[-(A_BREAKOUT_N + 1):-1]   # excludes the new brick
+        hi, lo = max(window), min(window)
+        pos = st["position"]
+
+        if pos == 1:
+            st["best"] = max(st["best"], brick)
+            if brick <= st["best"] * (1 - r):
+                log(f"{tag}: LONG exit - {brick:.4f} <= {st['best']*(1-r):.4f}")
+                if send_signal(exit_all, f"{tag} EXIT-ALL"):
+                    st.update(position=0, best=0.0)
+                    pos = 0
+        elif pos == -1:
+            st["best"] = min(st["best"], brick)
+            if brick >= st["best"] * (1 + r):
+                log(f"{tag}: SHORT exit - {brick:.4f} >= {st['best']*(1+r):.4f}")
+                if send_signal(exit_all, f"{tag} EXIT-ALL"):
+                    st.update(position=0, best=0.0)
+                    pos = 0
+
+        if pos == 0:
+            if brick >= hi:
+                log(f"{tag}: LONG entry - {brick:.4f} >= "
+                    f"{A_BREAKOUT_N}-brick high {hi:.4f}")
+                if send_signal(enter_long, f"{tag} ENTER-LONG"):
+                    st.update(position=1, best=brick, trades=st["trades"] + 1)
+            elif brick <= lo:
+                log(f"{tag}: SHORT entry - {brick:.4f} <= "
+                    f"{A_BREAKOUT_N}-brick low {lo:.4f}")
+                if send_signal(enter_short, f"{tag} ENTER-SHORT"):
+                    st.update(position=-1, best=brick, trades=st["trades"] + 1)
+
+    bricks = st["bricks"]
+    if len(bricks) >= A_BREAKOUT_N + 1:
+        window = bricks[-(A_BREAKOUT_N + 1):-1]
+        side = {0: "flat", 1: "holding LONG", -1: "holding SHORT"}[st["position"]]
+        log(f"{tag}: {side}. brick {bricks[-1]:.4f}  "
+            f"channel {min(window):.4f} .. {max(window):.4f}  "
             f"trades {st['trades']}")
+    else:
+        log(f"{tag}: only {len(bricks)} bricks, need {A_BREAKOUT_N + 1}")
 
 
 # --------------------------------------------------------- strategy B
 def run_strategy_b(symbol, names, st, new_closes, price):
+    """Strategy B: fast/slow Renko TEMA-ALMA agreement with a trailing exit.
+
+    IMPORTANT: this steps through the new closes ONE MINUTE AT A TIME.
+    The phase 28 backtest iterates bar by bar, so the live bot has to as
+    well. Evaluating only the final state of a multi-minute chunk skips
+    agreement changes that the backtest acts on.
+    """
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"B/{symbol}"
-
-    f_new, f_anchor, f_d = build_bricks(new_closes, B_FAST_BOX, REVERSAL,
-                                        st["f_anchor"], st["f_direction"])
-    s_new, s_anchor, s_d = build_bricks(new_closes, B_SLOW_BOX, REVERSAL,
-                                        st["s_anchor"], st["s_direction"])
-    st["f_anchor"], st["f_direction"] = f_anchor, f_d
-    st["s_anchor"], st["s_direction"] = s_anchor, s_d
-
     keep = max(B_TEMA * 3, B_ALMA) + 40
-    if f_new:
-        st["f_bricks"] = (st["f_bricks"] + f_new)[-keep:]
-    if s_new:
-        st["s_bricks"] = (st["s_bricks"] + s_new)[-keep:]
-
-    fast_dir = tema_alma_dir(st["f_bricks"], B_TEMA, B_ALMA)
-    slow_dir = tema_alma_dir(st["s_bricks"], B_TEMA, B_ALMA)
-
-    if fast_dir == 0 or slow_dir == 0:
-        log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
-            f"slow {len(st['s_bricks'])} bricks")
-        return
-
-    agree = fast_dir if fast_dir == slow_dir else 0
-    latest = st["f_bricks"][-1]
-    pos = st["position"]
     r = B_TRAIL / 100.0
 
-    if pos != 0:
-        out = (fast_dir != pos)
-        why = "fast flipped"
-        if not out:
-            if pos == 1:
-                st["best"] = max(st["best"], latest)
-                if latest <= st["best"] * (1 - r):
-                    out, why = True, f"{B_TRAIL}% retrace"
-            else:
-                st["best"] = min(st["best"], latest)
-                if latest >= st["best"] * (1 + r):
-                    out, why = True, f"{B_TRAIL}% retrace"
-        if out:
-            side = "LONG" if pos == 1 else "SHORT"
-            log(f"{tag}: {side} exit - {why}, brick {latest:.4f}, "
-                f"best {st['best']:.4f}")
-            if send_signal(exit_all, f"{tag} EXIT-ALL"):
-                st.update(position=0, best=0.0); pos = 0
+    fast_dir = slow_dir = 0
+    latest = 0.0
 
-    if pos == 0:
-        if agree != 0 and agree != st["prev_agree"]:
+    for c in new_closes:
+        f_new, st["f_anchor"], st["f_direction"] = build_bricks(
+            [c], B_FAST_BOX, REVERSAL, st["f_anchor"], st["f_direction"])
+        s_new, st["s_anchor"], st["s_direction"] = build_bricks(
+            [c], B_SLOW_BOX, REVERSAL, st["s_anchor"], st["s_direction"])
+        if f_new:
+            st["f_bricks"] = (st["f_bricks"] + f_new)[-keep:]
+        if s_new:
+            st["s_bricks"] = (st["s_bricks"] + s_new)[-keep:]
+        if not f_new and not s_new:
+            continue
+
+        fast_dir = tema_alma_dir(st["f_bricks"], B_TEMA, B_ALMA)
+        slow_dir = tema_alma_dir(st["s_bricks"], B_TEMA, B_ALMA)
+        if fast_dir == 0 or slow_dir == 0:
+            continue
+
+        latest = st["f_bricks"][-1]
+        agree = fast_dir if fast_dir == slow_dir else 0
+        pos = st["position"]
+
+        if pos != 0:
+            out = (fast_dir != pos)
+            why = "fast flipped"
+            if not out:
+                if pos == 1:
+                    st["best"] = max(st["best"], latest)
+                    if latest <= st["best"] * (1 - r):
+                        out, why = True, f"{B_TRAIL}% retrace"
+                else:
+                    st["best"] = min(st["best"], latest)
+                    if latest >= st["best"] * (1 + r):
+                        out, why = True, f"{B_TRAIL}% retrace"
+            if out:
+                side = "LONG" if pos == 1 else "SHORT"
+                log(f"{tag}: {side} exit - {why}, brick {latest:.4f}, "
+                    f"best {st['best']:.4f}")
+                if send_signal(exit_all, f"{tag} EXIT-ALL"):
+                    st.update(position=0, best=0.0)
+                    pos = 0
+
+        if pos == 0 and agree != 0 and agree != st["prev_agree"]:
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}")
@@ -367,15 +443,16 @@ def run_strategy_b(symbol, names, st, new_closes, price):
                     f"brick {latest:.4f}")
                 if send_signal(enter_short, f"{tag} ENTER-SHORT"):
                     st.update(position=-1, best=latest, trades=st["trades"] + 1)
-        else:
-            log(f"{tag}: flat. fast {fast_dir:+d}  slow {slow_dir:+d}  "
-                f"brick {latest:.4f}")
-    else:
-        side = "LONG" if st["position"] == 1 else "SHORT"
-        log(f"{tag}: holding {side}, brick {latest:.4f}, best {st['best']:.4f}, "
-            f"trades {st['trades']}")
 
-    st["prev_agree"] = agree
+        st["prev_agree"] = agree
+
+    if fast_dir == 0 or slow_dir == 0:
+        log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
+            f"slow {len(st['s_bricks'])} bricks")
+        return
+    side = {0: "flat", 1: "holding LONG", -1: "holding SHORT"}[st["position"]]
+    log(f"{tag}: {side}. fast {fast_dir:+d}  slow {slow_dir:+d}  "
+        f"brick {latest:.4f}  trades {st['trades']}")
 
 
 # ------------------------------------------------------------------ main
@@ -384,29 +461,34 @@ _HISTORY_CACHE = {}
 
 def warmup(strategy, symbol, state):
     if symbol in _HISTORY_CACHE:
-        closes, last_ms = _HISTORY_CACHE[symbol]
+        pairs, last_ms = _HISTORY_CACHE[symbol]
         log(f"{strategy}/{symbol}: reusing the history already downloaded")
     else:
         log(f"{strategy}/{symbol}: first run - pulling {WARMUP_DAYS} days")
-        closes, last_ms = fetch_history(symbol, WARMUP_DAYS)
-        _HISTORY_CACHE[symbol] = (closes, last_ms)
-    if len(closes) < 10000:
-        log(f"{strategy}/{symbol}: only {len(closes)} candles, aborting")
+        pairs, last_ms = fetch_history(symbol, WARMUP_DAYS)
+        _HISTORY_CACHE[symbol] = (pairs, last_ms)
+    if len(pairs) < 10000:
+        log(f"{strategy}/{symbol}: only {len(pairs)} candles, aborting")
         return None
 
+    st_seed = {}
+    hourly = to_hourly(pairs, st_seed)
+    log(f"{strategy}/{symbol}: {len(pairs):,} minutes -> {len(hourly):,} hourly bars")
+
     if strategy == "A":
-        bricks, anchor, d = build_bricks(closes, A_BOX, REVERSAL)
-        log(f"A/{symbol}: {len(closes):,} candles -> {len(bricks):,} bricks")
+        bricks, anchor, d = build_bricks(hourly, A_BOX, REVERSAL)
+        log(f"A/{symbol}: {len(hourly):,} hourly bars -> {len(bricks):,} bricks")
         if len(bricks) < A_BREAKOUT_N + 5:
             log(f"A/{symbol}: not enough bricks, need {A_BREAKOUT_N}")
             return None
         return dict(bricks=bricks[-(A_BREAKOUT_N * 3):], anchor=anchor,
                     direction=d, last_ms=last_ms, position=0, best=0.0,
-                    trades=0)
+                    trades=0, hour_bucket=st_seed["hour_bucket"],
+                    hour_close=st_seed["hour_close"])
 
-    fb, fa, fd = build_bricks(closes, B_FAST_BOX, REVERSAL)
-    sb, sa, sd = build_bricks(closes, B_SLOW_BOX, REVERSAL)
-    log(f"B/{symbol}: {len(closes):,} candles -> {len(fb):,} fast bricks, "
+    fb, fa, fd = build_bricks(hourly, B_FAST_BOX, REVERSAL)
+    sb, sa, sd = build_bricks(hourly, B_SLOW_BOX, REVERSAL)
+    log(f"B/{symbol}: {len(hourly):,} hourly bars -> {len(fb):,} fast bricks, "
         f"{len(sb):,} slow bricks")
     need = max(B_TEMA * 3, B_ALMA) + 2
     if len(fb) < need or len(sb) < need:
@@ -416,7 +498,8 @@ def warmup(strategy, symbol, state):
     return dict(f_bricks=fb[-keep:], s_bricks=sb[-keep:],
                 f_anchor=fa, f_direction=fd, s_anchor=sa, s_direction=sd,
                 last_ms=last_ms, position=0, best=0.0, trades=0,
-                prev_agree=0)
+                prev_agree=0, hour_bucket=st_seed["hour_bucket"],
+                hour_close=st_seed["hour_close"])
 
 
 def main():
@@ -442,14 +525,19 @@ def main():
                 if not new:
                     log(f"{strategy}/{symbol}: no new candles")
                     continue
-                closes = [c for _, c in new]
                 st["last_ms"] = new[-1][0]
-                price = closes[-1]
+                price = new[-1][1]
+
+                hourly = to_hourly(new, st)
+                if not hourly:
+                    log(f"{strategy}/{symbol}: {len(new)} min, hour not "
+                        f"complete yet, price {price:.4f}")
+                    continue
 
                 if strategy == "A":
-                    run_strategy_a(symbol, names, st, closes, price)
+                    run_strategy_a(symbol, names, st, hourly, price)
                 else:
-                    run_strategy_b(symbol, names, st, closes, price)
+                    run_strategy_b(symbol, names, st, hourly, price)
 
             except Exception as e:
                 log(f"{strategy}/{symbol}: ERROR {type(e).__name__}: {e}")
