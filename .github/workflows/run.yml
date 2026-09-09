@@ -29,13 +29,21 @@ jobs:
 
       - name: Run bot
         env:
-          SOL_ENTER_LONG:  ${{ secrets.SOL_ENTER_LONG }}
-          SOL_ENTER_SHORT: ${{ secrets.SOL_ENTER_SHORT }}
-          SOL_EXIT_ALL:    ${{ secrets.SOL_EXIT_ALL }}
-          XRP_ENTER_LONG:  ${{ secrets.XRP_ENTER_LONG }}
-          XRP_ENTER_SHORT: ${{ secrets.XRP_ENTER_SHORT }}
-          XRP_EXIT_ALL:    ${{ secrets.XRP_EXIT_ALL }}
-          DRY_RUN:         ${{ github.event.inputs.dry_run }}
+          # strategy A - breakout (already running)
+          SOL_ENTER_LONG:    ${{ secrets.SOL_ENTER_LONG }}
+          SOL_ENTER_SHORT:   ${{ secrets.SOL_ENTER_SHORT }}
+          SOL_EXIT_ALL:      ${{ secrets.SOL_EXIT_ALL }}
+          XRP_ENTER_LONG:    ${{ secrets.XRP_ENTER_LONG }}
+          XRP_ENTER_SHORT:   ${{ secrets.XRP_ENTER_SHORT }}
+          XRP_EXIT_ALL:      ${{ secrets.XRP_EXIT_ALL }}
+          # strategy B - TEMA/ALMA two-timeframe (new)
+          B_SOL_ENTER_LONG:  ${{ secrets.B_SOL_ENTER_LONG }}
+          B_SOL_ENTER_SHORT: ${{ secrets.B_SOL_ENTER_SHORT }}
+          B_SOL_EXIT_ALL:    ${{ secrets.B_SOL_EXIT_ALL }}
+          B_XRP_ENTER_LONG:  ${{ secrets.B_XRP_ENTER_LONG }}
+          B_XRP_ENTER_SHORT: ${{ secrets.B_XRP_ENTER_SHORT }}
+          B_XRP_EXIT_ALL:    ${{ secrets.B_XRP_EXIT_ALL }}
+          DRY_RUN:           ${{ github.event.inputs.dry_run }}
         run: python bot.py
 
       - name: Save state
