@@ -66,16 +66,9 @@ B_TRAIL      = 8.5
 
 REVERSAL     = 2        # bricks needed to reverse direction
 WARMUP_DAYS  = 900      # history pulled on first run.
-                        # Strategy B's slow box is 7.8%, which produces
-                        # far fewer bricks than A's 2.7% box. B needs at
-                        # least max(TEMA*3, ALMA)+2 = 47 slow bricks, and
-                        # 400 days was borderline. 900 days is safe.
-                        # The download is shared between A and B so this
-                        # costs one fetch per coin, not two.
 
 WEBHOOK = "https://3c.wtalerts.com/bot/other"
 
-# strategy -> symbol -> the three secret names holding its 3Commas codes
 MARKETS = {
     "A": {
         "SOLUSDT": ("SOL_ENTER_LONG", "SOL_ENTER_SHORT", "SOL_EXIT_ALL"),
@@ -87,12 +80,17 @@ MARKETS = {
     },
 }
 
+# trade amount per (strategy, symbol), in USDT.
+TRADE_AMOUNTS = {
+    "A": {"SOLUSDT": 1000, "XRPUSDT": 1000},
+    "B": {"SOLUSDT": 1000, "XRPUSDT": 1000},
+}
+
 STATE_FILE = "state.json"
 LOG_FILE   = "trades.log"
 DRY_RUN    = os.environ.get("DRY_RUN", "").lower() in ("1", "true", "yes")
 
 
-# ---------------------------------------------------------------- utils
 def log(msg):
     line = f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}Z  {msg}"
     print(line, flush=True)
@@ -116,14 +114,24 @@ def http_get(url, tries=3):
             time.sleep(3)
 
 
-def send_signal(code, label):
+def send_signal(strategy, symbol, code, label):
     if not code:
         log(f"  !! no code configured for {label} - skipped")
         return False
     if DRY_RUN:
-        log(f"  DRY RUN - would send {label}")
+        amount = TRADE_AMOUNTS[strategy][symbol]
+        log(f"  DRY RUN - would send {label}  amount={amount} USDT  "
+            f"type=quote  order=market")
         return True
-    body = json.dumps({"code": code}).encode()
+    amount = TRADE_AMOUNTS[strategy][symbol]
+    body = json.dumps({
+        "code": code,
+        "data": {
+            "amountPerTrade": amount,
+            "amountPerTradeType": "quote",
+            "orderType": "market",
+        },
+    }).encode()
     req = urllib.request.Request(
         WEBHOOK, data=body,
         headers={"Content-Type": "application/json", "User-Agent": "renko-bot"},
@@ -131,7 +139,7 @@ def send_signal(code, label):
     for i in range(3):
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
-                log(f"  SENT {label}  (http {r.status})")
+                log(f"  SENT {label}  amount={amount} USDT  (http {r.status})")
                 return True
         except urllib.error.HTTPError as e:
             log(f"  webhook http {e.code} on {label}")
@@ -143,11 +151,7 @@ def send_signal(code, label):
     return False
 
 
-# ------------------------------------------------------------ price data
 def klines(symbol, start_ms=None, limit=1000):
-    """Binance 1-minute closes from the public archive host.
-    fapi.binance.com returns HTTP 451 from GitHub's US servers;
-    data-api.binance.vision does not."""
     url = ("https://data-api.binance.vision/api/v3/klines"
            f"?symbol={symbol}&interval=1m&limit={limit}")
     if start_ms:
@@ -157,7 +161,6 @@ def klines(symbol, start_ms=None, limit=1000):
 
 
 def fetch_history(symbol, days):
-    """Returns [(open_time_ms, close), ...] sorted, plus the last timestamp."""
     now_ms = int(time.time() * 1000)
     start = now_ms - days * 24 * 60 * 60 * 1000
     out = []
@@ -185,13 +188,6 @@ HOUR_MS = 3_600_000
 
 
 def to_hourly(pairs, st):
-    """Reduce 1-minute (time, close) pairs to the last close of each
-    COMPLETED hour - the same thing pandas resample('1h').last() does in
-    the backtests.
-
-    The in-progress hour is carried in state (hour_bucket / hour_close)
-    so a partial hour at the end of one run is completed by the next.
-    """
     out = []
     bucket = st.get("hour_bucket")
     bclose = st.get("hour_close")
@@ -202,16 +198,14 @@ def to_hourly(pairs, st):
         elif h == bucket:
             bclose = c
         else:
-            out.append(bclose)          # previous hour is now complete
+            out.append(bclose)
             bucket, bclose = h, c
     st["hour_bucket"] = bucket
     st["hour_close"] = bclose
     return out
 
 
-# ----------------------------------------------------------------- renko
 def build_bricks(closes, pct, reversal, anchor=None, direction=0):
-    """Percentage renko in log space. Returns (bricks, anchor, direction)."""
     import math
     box = math.log1p(pct / 100.0)
     bricks = []
@@ -235,7 +229,6 @@ def build_bricks(closes, pct, reversal, anchor=None, direction=0):
     return bricks, anchor, d
 
 
-# ------------------------------------------------------------ indicators
 def ema_list(x, n):
     a = 2.0 / (n + 1.0)
     out = []
@@ -254,7 +247,6 @@ def tema_list(x, n):
 
 
 def alma_last(x, w, offset, sigma):
-    """ALMA of the most recent w values. Returns None if too few."""
     import math
     if len(x) < w:
         return None
@@ -267,8 +259,6 @@ def alma_last(x, w, offset, sigma):
 
 
 def tema_alma_dir(bricks, t_len, a_len):
-    """+1 if TEMA above ALMA on the latest brick, -1 if below, 0 if
-    not enough bricks yet."""
     warm = max(t_len * 3, a_len) + 2
     if len(bricks) < warm:
         return 0
@@ -279,7 +269,6 @@ def tema_alma_dir(bricks, t_len, a_len):
     return 1 if t > a else -1
 
 
-# ----------------------------------------------------------------- state
 def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, encoding="utf-8") as f:
@@ -296,16 +285,7 @@ def codes_for(names):
     return tuple(os.environ.get(n, "") for n in names)
 
 
-# --------------------------------------------------------- strategy A
 def run_strategy_a(symbol, names, st, new_closes, price):
-    """Strategy A: 160-brick channel breakout with a trailing exit.
-
-    IMPORTANT: this evaluates EVERY newly formed brick in order, not just
-    the most recent one. If two bricks form between runs - which happens
-    during fast moves, and whenever GitHub delays a scheduled run - only
-    checking the last brick silently skips entries and exits that the
-    backtest would have taken.
-    """
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"A/{symbol}"
 
@@ -332,7 +312,7 @@ def run_strategy_a(symbol, names, st, new_closes, price):
         if len(bricks) < A_BREAKOUT_N + 1:
             continue
 
-        window = bricks[-(A_BREAKOUT_N + 1):-1]   # excludes the new brick
+        window = bricks[-(A_BREAKOUT_N + 1):-1]
         hi, lo = max(window), min(window)
         pos = st["position"]
 
@@ -340,14 +320,14 @@ def run_strategy_a(symbol, names, st, new_closes, price):
             st["best"] = max(st["best"], brick)
             if brick <= st["best"] * (1 - r):
                 log(f"{tag}: LONG exit - {brick:.4f} <= {st['best']*(1-r):.4f}")
-                if send_signal(exit_all, f"{tag} EXIT-ALL"):
+                if send_signal("A", symbol, exit_all, f"{tag} EXIT-ALL"):
                     st.update(position=0, best=0.0)
                     pos = 0
         elif pos == -1:
             st["best"] = min(st["best"], brick)
             if brick >= st["best"] * (1 + r):
                 log(f"{tag}: SHORT exit - {brick:.4f} >= {st['best']*(1+r):.4f}")
-                if send_signal(exit_all, f"{tag} EXIT-ALL"):
+                if send_signal("A", symbol, exit_all, f"{tag} EXIT-ALL"):
                     st.update(position=0, best=0.0)
                     pos = 0
 
@@ -355,12 +335,12 @@ def run_strategy_a(symbol, names, st, new_closes, price):
             if brick >= hi:
                 log(f"{tag}: LONG entry - {brick:.4f} >= "
                     f"{A_BREAKOUT_N}-brick high {hi:.4f}")
-                if send_signal(enter_long, f"{tag} ENTER-LONG"):
+                if send_signal("A", symbol, enter_long, f"{tag} ENTER-LONG"):
                     st.update(position=1, best=brick, trades=st["trades"] + 1)
             elif brick <= lo:
                 log(f"{tag}: SHORT entry - {brick:.4f} <= "
                     f"{A_BREAKOUT_N}-brick low {lo:.4f}")
-                if send_signal(enter_short, f"{tag} ENTER-SHORT"):
+                if send_signal("A", symbol, enter_short, f"{tag} ENTER-SHORT"):
                     st.update(position=-1, best=brick, trades=st["trades"] + 1)
 
     bricks = st["bricks"]
@@ -374,18 +354,11 @@ def run_strategy_a(symbol, names, st, new_closes, price):
         log(f"{tag}: only {len(bricks)} bricks, need {A_BREAKOUT_N + 1}")
 
 
-# --------------------------------------------------------- strategy B
 def run_strategy_b(symbol, names, st, new_closes, price):
-    """Strategy B: fast/slow Renko TEMA-ALMA agreement with a trailing exit.
-
-    IMPORTANT: this steps through the new closes ONE MINUTE AT A TIME.
-    The phase 28 backtest iterates bar by bar, so the live bot has to as
-    well. Evaluating only the final state of a multi-minute chunk skips
-    agreement changes that the backtest acts on.
-    """
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"B/{symbol}"
     keep = max(B_TEMA * 3, B_ALMA) + 40
+    need = max(B_TEMA * 3, B_ALMA) + 2
     r = B_TRAIL / 100.0
 
     fast_dir = slow_dir = 0
@@ -428,7 +401,7 @@ def run_strategy_b(symbol, names, st, new_closes, price):
                 side = "LONG" if pos == 1 else "SHORT"
                 log(f"{tag}: {side} exit - {why}, brick {latest:.4f}, "
                     f"best {st['best']:.4f}")
-                if send_signal(exit_all, f"{tag} EXIT-ALL"):
+                if send_signal("B", symbol, exit_all, f"{tag} EXIT-ALL"):
                     st.update(position=0, best=0.0)
                     pos = 0
 
@@ -436,26 +409,33 @@ def run_strategy_b(symbol, names, st, new_closes, price):
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}")
-                if send_signal(enter_long, f"{tag} ENTER-LONG"):
+                if send_signal("B", symbol, enter_long, f"{tag} ENTER-LONG"):
                     st.update(position=1, best=latest, trades=st["trades"] + 1)
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}")
-                if send_signal(enter_short, f"{tag} ENTER-SHORT"):
+                if send_signal("B", symbol, enter_short, f"{tag} ENTER-SHORT"):
                     st.update(position=-1, best=latest, trades=st["trades"] + 1)
 
         st["prev_agree"] = agree
 
-    if fast_dir == 0 or slow_dir == 0:
+    if len(st["f_bricks"]) < need or len(st["s_bricks"]) < need:
         log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
             f"slow {len(st['s_bricks'])} bricks")
         return
+    if fast_dir == 0 or slow_dir == 0:
+        fast_dir = tema_alma_dir(st["f_bricks"], B_TEMA, B_ALMA)
+        slow_dir = tema_alma_dir(st["s_bricks"], B_TEMA, B_ALMA)
+        latest = st["f_bricks"][-1] if st["f_bricks"] else 0.0
+        if fast_dir == 0 or slow_dir == 0:
+            log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
+                f"slow {len(st['s_bricks'])} bricks")
+            return
     side = {0: "flat", 1: "holding LONG", -1: "holding SHORT"}[st["position"]]
     log(f"{tag}: {side}. fast {fast_dir:+d}  slow {slow_dir:+d}  "
         f"brick {latest:.4f}  trades {st['trades']}")
 
 
-# ------------------------------------------------------------------ main
 _HISTORY_CACHE = {}
 
 
