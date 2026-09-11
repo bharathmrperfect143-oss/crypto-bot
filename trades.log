@@ -2597,3 +2597,11 @@
 2026-09-10 23:53:01Z  B/SOLUSDT: 11 min, hour not complete yet, price 99.0000
 2026-09-10 23:53:02Z  B/XRPUSDT: 11 min, hour not complete yet, price 1.3377
 2026-09-10 23:53:02Z  done
+2026-09-11 00:11:34Z  ============================================================
+2026-09-11 00:11:35Z  A/SOLUSDT: flat. brick 100.3891  channel 62.1468 .. 145.7716
+2026-09-11 00:11:35Z  A/XRPUSDT: flat. brick 1.3405  channel 1.0000 .. 2.3456  trades 0
+2026-09-11 00:11:36Z  B/SOLUSDT: LONG exit - fast flipped, brick 98.9099, best 100.8881
+2026-09-11 00:11:37Z    SENT B/SOLUSDT EXIT-ALL  (http 200)
+2026-09-11 00:11:37Z  B/SOLUSDT: flat. fast -1  slow +1  brick 98.9099  trades 1
+2026-09-11 00:11:37Z  B/XRPUSDT: warming up - fast 85 bricks, slow 85 bricks
+2026-09-11 00:11:37Z  done
