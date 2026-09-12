@@ -3400,3 +3400,79 @@
 2026-09-12 08:43:49Z  B/SOLUSDT: 15 min, hour not complete yet, price 101.8000
 2026-09-12 08:43:49Z  B/XRPUSDT: 15 min, hour not complete yet, price 1.3667
 2026-09-12 08:43:49Z  done
+2026-09-12 09:52:48Z  ============================================================
+2026-09-12 09:52:48Z  A/SOLUSDT: first run - pulling 900 days
+2026-09-12 09:53:35Z      ...50,000 candles
+2026-09-12 09:54:22Z      ...100,000 candles
+2026-09-12 09:55:10Z      ...150,000 candles
+2026-09-12 09:55:58Z      ...200,000 candles
+2026-09-12 09:56:45Z      ...250,000 candles
+2026-09-12 09:57:33Z      ...300,000 candles
+2026-09-12 09:58:20Z      ...350,000 candles
+2026-09-12 09:59:07Z      ...400,000 candles
+2026-09-12 09:59:55Z      ...450,000 candles
+2026-09-12 10:00:44Z      ...500,000 candles
+2026-09-12 10:01:32Z      ...550,000 candles
+2026-09-12 10:02:19Z      ...600,000 candles
+2026-09-12 10:03:07Z      ...650,000 candles
+2026-09-12 10:03:54Z      ...700,000 candles
+2026-09-12 10:04:42Z      ...750,000 candles
+2026-09-12 10:05:30Z      ...800,000 candles
+2026-09-12 10:06:17Z      ...850,000 candles
+2026-09-12 10:07:05Z      ...900,000 candles
+2026-09-12 10:07:52Z      ...950,000 candles
+2026-09-12 10:08:40Z      ...1,000,000 candles
+2026-09-12 10:09:27Z      ...1,050,000 candles
+2026-09-12 10:10:16Z      ...1,100,000 candles
+2026-09-12 10:11:03Z      ...1,150,000 candles
+2026-09-12 10:11:50Z      ...1,200,000 candles
+2026-09-12 10:12:37Z      ...1,250,000 candles
+2026-09-12 10:13:22Z  A/SOLUSDT: 1,296,000 minutes -> 21,600 hourly bars
+2026-09-12 10:13:22Z  A/SOLUSDT: 21,600 hourly bars -> 809 bricks
+2026-09-12 10:13:22Z  A/SOLUSDT: warm-up complete, starting FLAT
+2026-09-12 10:13:22Z  A/XRPUSDT: first run - pulling 900 days
+2026-09-12 10:14:09Z      ...50,000 candles
+2026-09-12 10:14:56Z      ...100,000 candles
+2026-09-12 10:15:45Z      ...150,000 candles
+2026-09-12 10:16:32Z      ...200,000 candles
+2026-09-12 10:17:20Z      ...250,000 candles
+2026-09-12 10:18:07Z      ...300,000 candles
+2026-09-12 10:18:55Z      ...350,000 candles
+2026-09-12 10:19:44Z      ...400,000 candles
+2026-09-12 10:20:32Z      ...450,000 candles
+2026-09-12 10:21:20Z      ...500,000 candles
+2026-09-12 10:22:08Z      ...550,000 candles
+2026-09-12 10:22:55Z      ...600,000 candles
+2026-09-12 10:23:44Z      ...650,000 candles
+2026-09-12 10:24:31Z      ...700,000 candles
+2026-09-12 10:25:19Z      ...750,000 candles
+2026-09-12 10:26:07Z      ...800,000 candles
+2026-09-12 10:26:54Z      ...850,000 candles
+2026-09-12 10:27:42Z      ...900,000 candles
+2026-09-12 10:28:29Z      ...950,000 candles
+2026-09-12 10:29:16Z      ...1,000,000 candles
+2026-09-12 10:30:05Z      ...1,050,000 candles
+2026-09-12 10:30:52Z      ...1,100,000 candles
+2026-09-12 10:31:40Z      ...1,150,000 candles
+2026-09-12 10:32:27Z      ...1,200,000 candles
+2026-09-12 10:33:14Z      ...1,250,000 candles
+2026-09-12 10:33:58Z  A/XRPUSDT: 1,296,000 minutes -> 21,600 hourly bars
+2026-09-12 10:33:58Z  A/XRPUSDT: 21,600 hourly bars -> 723 bricks
+2026-09-12 10:33:58Z  A/XRPUSDT: warm-up complete, starting FLAT
+2026-09-12 10:33:58Z  B/SOLUSDT: reusing the history already downloaded
+2026-09-12 10:33:58Z  B/SOLUSDT: 1,296,000 minutes -> 21,600 hourly bars
+2026-09-12 10:33:58Z  B/SOLUSDT: 21,600 hourly bars -> 1,266 fast bricks, 133 slow bricks
+2026-09-12 10:33:58Z  B/SOLUSDT: warm-up complete, starting FLAT
+2026-09-12 10:33:58Z  B/XRPUSDT: reusing the history already downloaded
+2026-09-12 10:33:58Z  B/XRPUSDT: 1,296,000 minutes -> 21,600 hourly bars
+2026-09-12 10:33:58Z  B/XRPUSDT: 21,600 hourly bars -> 1,111 fast bricks, 131 slow bricks
+2026-09-12 10:33:58Z  B/XRPUSDT: warm-up complete, starting FLAT
+2026-09-12 10:33:58Z  C/SOLUSDT: reusing the history already downloaded
+2026-09-12 10:33:58Z  C/SOLUSDT: 1,296,000 minutes -> 21,600 hourly bars
+2026-09-12 10:33:58Z  C/SOLUSDT: 21,600 hourly bars -> 1,266 fast bricks, 133 slow bricks
+2026-09-12 10:33:58Z  C/SOLUSDT: warm-up complete, starting FLAT
+2026-09-12 10:33:58Z  C/XRPUSDT: reusing the history already downloaded
+2026-09-12 10:33:58Z  C/XRPUSDT: 1,296,000 minutes -> 21,600 hourly bars
+2026-09-12 10:33:58Z  C/XRPUSDT: 21,600 hourly bars -> 1,111 fast bricks, 131 slow bricks
+2026-09-12 10:33:58Z  C/XRPUSDT: warm-up complete, starting FLAT
+2026-09-12 10:33:58Z  done
