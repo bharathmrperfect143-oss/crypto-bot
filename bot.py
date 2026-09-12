@@ -1,27 +1,40 @@
 """
-Live signal bot - TWO strategies running side by side.
+Live signal bot - THREE strategies running side by side (A, B baseline,
+C = B + Stage 1 vol-sizing), for direct A/B comparison on real capital.
 
-STRATEGY A - BREAKOUT + TRAILING          (already running, unchanged)
+STRATEGY A - BREAKOUT + TRAILING          (unchanged)
     Renko percentage box   2.7%
     Entry   break above the 160-brick high -> LONG
             break below the 160-brick low  -> SHORT
     Exit    3% retrace from the best price reached -> FLAT
     Backtest: 2021 +57.5%  2022-23 +32.8%  2024-25 +21.0%  DD -11.2%
 
-STRATEGY B - TEMA/ALMA TWO-TIMEFRAME      (new, phase 28 winner)
+STRATEGY B - TEMA/ALMA TWO-TIMEFRAME, BASELINE (unchanged, control group)
     FAST Renko box 2.0%   TEMA 15 / ALMA 17   -> the signal
     SLOW Renko box 7.8%   TEMA 15 / ALMA 17   -> the direction filter
-    Entry   both timeframes agree -> take it. Disagree -> FLAT.
-    Exit    fast timeframe flips, or 8.5% retrace from best -> FLAT
-    Backtest: 2021 +23.8%  2022-23 +23.2%  2024-25 +23.7%  DD -19.7%
+    Entry   both timeframes agree AND this is a genuine change from the
+            last computed agreement value (edge-trigger) -> take it.
+    Exit    fast timeframe flips, or a flat 8.5% retrace from best price.
+    Fixed $1000 per trade, always - no sizing changes.
+    Baseline backtest: 2021 +23.8%  2022-23 +23.2%  2024-25 +23.7%  DD -19.7%
+    (these are the known 8-12 coin PORTFOLIO numbers from phase28.py -
+    SOL/XRP alone will differ, that's expected, see validate_strategy_b.py)
 
-WHY BOTH: their daily returns correlate only 0.47, so they cover each
-other's bad patches. Phase 29 measured an 80/20 blend at -14.5% drawdown,
-better than either strategy alone, with the worst year rising from +2.8%
-to +7.4%.
+STRATEGY C - SAME AS B, PLUS STAGE 1.1 (volatility-targeted sizing)
+    Identical entry/exit rules to B. The only difference: position size at
+    entry scales as min(1.0, 40%/realized_30d_vol) * $1000, instead of
+    always sending the full $1000. Runs on its own 3Commas bots
+    (SOL/XRP DB-STAGE1) so it can be compared head-to-head against B with
+    real forward-test capital, not just backtest numbers.
 
-Strategy A keeps its existing bots and capital. Strategy B gets its own
-3Commas bots at roughly a quarter of A's trade size.
+STAGE 1 RESEARCH RESULT (2026-09-12): of everything tested in isolation
+(vol-sizing, profit-tiered trailing exit, confirmation delay, asymmetric
+long/short trail), only volatility-targeted sizing showed a consistent
+improvement across all 6 tested coin-regime combinations (SOL and XRP,
+all 3 regimes) with no case where it hurt - see test_stage1_sol.py for
+the full isolation-test results this decision was based on. That's why
+only that one change is in Strategy C; the others are documented but not
+deployed.
 
 BAR RESOLUTION - THIS MATTERS
     Both backtests resample price to HOURLY closes before building Renko
@@ -29,20 +42,22 @@ BAR RESOLUTION - THIS MATTERS
     1-minute closes produces 28-48% MORE bricks - extra bricks created by
     intra-hour wiggles that an hourly close smooths away - and that is a
     different strategy with different trades and a different return.
-    Measured on a test series: minute bricks gave 35 trades and +20.5%,
-    hourly bricks gave 20 trades and +128.4%.
 
     So: minute klines are downloaded, then reduced to the last close of
     each COMPLETED hour. A partial hour is carried in state until it
     completes, so nothing is lost between runs.
 
-State is kept per strategy in state.json, so the two never interfere.
+State is kept per strategy in state.json (keyed "A:SYMBOL", "B:SYMBOL",
+"C:SYMBOL"), so the three never interfere with each other.
 
-DO NOT change the parameters during the forward test.
+DO NOT change the parameters during the forward test, except as part of
+a deliberately isolated experiment.
 """
 
 import json
+import math
 import os
+import statistics
 import sys
 import time
 import urllib.request
@@ -50,22 +65,32 @@ import urllib.error
 from datetime import datetime, timezone
 
 # ---------------------------------------------------------------- config
-# strategy A - breakout
+# strategy A - breakout (unchanged)
 A_BOX        = 2.7      # renko brick as % of price
 A_BREAKOUT_N = 160      # bricks in the high/low channel
 A_TRAIL      = 3.0      # trailing exit %
 
-# strategy B - TEMA/ALMA two timeframe
+# strategy B - TEMA/ALMA two timeframe (baseline params, unchanged)
 B_FAST_BOX   = 2.0
 B_SLOW_BOX   = 7.8
 B_TEMA       = 15
 B_ALMA       = 17
 B_ALMA_OFF   = 0.85
 B_ALMA_SIG   = 1.0
-B_TRAIL      = 8.5
+B_TRAIL      = 8.5      # fallback trail % if entry price is unknown
 
 REVERSAL     = 2        # bricks needed to reverse direction
 WARMUP_DAYS  = 900      # history pulled on first run.
+
+# ---- STAGE 1 addition (validated 2026-09-12: only 1.1 survived isolation
+# testing on both SOL and XRP across all 3 regimes; 1.2 tiered-trail and
+# 1.3 confirm-delay both hurt returns in at least one bull regime and were
+# dropped - see test_stage1_sol.py results) ---------------------------------
+VOL_TARGET       = 0.40   # annualized target volatility (40%)
+VOL_LOOKBACK_HRS = 720    # 30 days of hourly closes for realized-vol calc
+VOL_LMAX         = 1.0    # cap: never size above 1.0x the base amount
+# ---------------------------------------------------------------------------
+
 
 WEBHOOK = "https://3c.wtalerts.com/bot/other"
 
@@ -78,12 +103,21 @@ MARKETS = {
         "SOLUSDT": ("B_SOL_ENTER_LONG", "B_SOL_ENTER_SHORT", "B_SOL_EXIT_ALL"),
         "XRPUSDT": ("B_XRP_ENTER_LONG", "B_XRP_ENTER_SHORT", "B_XRP_EXIT_ALL"),
     },
+    "C": {
+        "SOLUSDT": ("C_SOL_ENTER_LONG", "C_SOL_ENTER_SHORT", "C_SOL_EXIT_ALL"),
+        "XRPUSDT": ("C_XRP_ENTER_LONG", "C_XRP_ENTER_SHORT", "C_XRP_EXIT_ALL"),
+    },
 }
 
-# trade amount per (strategy, symbol), in USDT.
+# base trade amount per (strategy, symbol), in USDT.
+# Strategy C's amount here is the BASE amount at vol-weight = 1.0 (i.e.
+# when realized vol == VOL_TARGET exactly); actual sent amount is scaled
+# by vol_target_size() at entry time. A and B always send this amount
+# exactly, no sizing changes.
 TRADE_AMOUNTS = {
     "A": {"SOLUSDT": 1000, "XRPUSDT": 1000},
     "B": {"SOLUSDT": 1000, "XRPUSDT": 1000},
+    "C": {"SOLUSDT": 1000, "XRPUSDT": 1000},
 }
 
 STATE_FILE = "state.json"
@@ -114,16 +148,16 @@ def http_get(url, tries=3):
             time.sleep(3)
 
 
-def send_signal(strategy, symbol, code, label):
+def send_signal(strategy, symbol, code, label, amount=None):
     if not code:
         log(f"  !! no code configured for {label} - skipped")
         return False
-    if DRY_RUN:
+    if amount is None:
         amount = TRADE_AMOUNTS[strategy][symbol]
+    if DRY_RUN:
         log(f"  DRY RUN - would send {label}  amount={amount} USDT  "
             f"type=quote  order=market")
         return True
-    amount = TRADE_AMOUNTS[strategy][symbol]
     body = json.dumps({
         "code": code,
         "data": {
@@ -206,7 +240,6 @@ def to_hourly(pairs, st):
 
 
 def build_bricks(closes, pct, reversal, anchor=None, direction=0):
-    import math
     box = math.log1p(pct / 100.0)
     bricks = []
     if anchor is None:
@@ -247,7 +280,6 @@ def tema_list(x, n):
 
 
 def alma_last(x, w, offset, sigma):
-    import math
     if len(x) < w:
         return None
     m = offset * (w - 1)
@@ -269,6 +301,29 @@ def tema_alma_dir(bricks, t_len, a_len):
     return 1 if t > a else -1
 
 
+# ---- STAGE 1.1 - volatility-targeted position sizing ----------------------
+
+def realized_vol_annualized(closes, lookback=VOL_LOOKBACK_HRS):
+    """Annualized realized volatility from a list of hourly closes."""
+    seg = closes[-lookback:]
+    if len(seg) < 30:
+        return None
+    rets = [math.log(seg[i] / seg[i - 1]) for i in range(1, len(seg))
+             if seg[i - 1] > 0 and seg[i] > 0]
+    if len(rets) < 2:
+        return None
+    sd = statistics.pstdev(rets)
+    return sd * math.sqrt(24 * 365)  # hourly bars -> annualized
+
+
+def vol_target_size(base_amount, realized_vol):
+    """Scale base_amount by VOL_TARGET / realized_vol, capped at VOL_LMAX."""
+    if not realized_vol or realized_vol <= 0:
+        return base_amount
+    weight = min(VOL_LMAX, VOL_TARGET / realized_vol)
+    return round(base_amount * weight, 2)
+
+
 def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, encoding="utf-8") as f:
@@ -286,6 +341,7 @@ def codes_for(names):
 
 
 def run_strategy_a(symbol, names, st, new_closes, price):
+    """Strategy A - unchanged from the previous version."""
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"A/{symbol}"
 
@@ -354,7 +410,109 @@ def run_strategy_a(symbol, names, st, new_closes, price):
         log(f"{tag}: only {len(bricks)} bricks, need {A_BREAKOUT_N + 1}")
 
 
+def run_strategy_c(symbol, names, st, new_closes, price):
+    """Strategy C - identical to Strategy B except position size at entry
+    is volatility-targeted (Stage 1.1). See module docstring."""
+    enter_long, enter_short, exit_all = codes_for(names)
+    tag = f"C/{symbol}"
+    keep = max(B_TEMA * 3, B_ALMA) + 40
+    need = max(B_TEMA * 3, B_ALMA) + 2
+    base_amount = TRADE_AMOUNTS["C"][symbol]
+    r = B_TRAIL / 100.0
+
+    # STAGE 1.1 - keep a rolling window of raw hourly closes for the
+    # realized-volatility calc (separate from the Renko brick arrays,
+    # since bricks discretize price and would distort a vol estimate).
+    st["price_history"] = (st.get("price_history", []) + list(new_closes))[-VOL_LOOKBACK_HRS:]
+
+    fast_dir = slow_dir = 0
+    latest = 0.0
+
+    for c in new_closes:
+        f_new, st["f_anchor"], st["f_direction"] = build_bricks(
+            [c], B_FAST_BOX, REVERSAL, st["f_anchor"], st["f_direction"])
+        s_new, st["s_anchor"], st["s_direction"] = build_bricks(
+            [c], B_SLOW_BOX, REVERSAL, st["s_anchor"], st["s_direction"])
+        if f_new:
+            st["f_bricks"] = (st["f_bricks"] + f_new)[-keep:]
+        if s_new:
+            st["s_bricks"] = (st["s_bricks"] + s_new)[-keep:]
+        if not f_new and not s_new:
+            continue
+
+        fast_dir = tema_alma_dir(st["f_bricks"], B_TEMA, B_ALMA)
+        slow_dir = tema_alma_dir(st["s_bricks"], B_TEMA, B_ALMA)
+        if fast_dir == 0 or slow_dir == 0:
+            continue
+
+        latest = st["f_bricks"][-1]
+        agree = fast_dir if fast_dir == slow_dir else 0
+        pos = st["position"]
+
+        if pos != 0:
+            out = (fast_dir != pos)
+            why = "fast flipped"
+            if not out:
+                if pos == 1:
+                    st["best"] = max(st["best"], latest)
+                    if latest <= st["best"] * (1 - r):
+                        out, why = True, f"{B_TRAIL}% retrace"
+                else:
+                    st["best"] = min(st["best"], latest)
+                    if latest >= st["best"] * (1 + r):
+                        out, why = True, f"{B_TRAIL}% retrace"
+            if out:
+                side = "LONG" if pos == 1 else "SHORT"
+                log(f"{tag}: {side} exit - {why}, brick {latest:.4f}, "
+                    f"best {st['best']:.4f}")
+                if send_signal("C", symbol, exit_all, f"{tag} EXIT-ALL"):
+                    st.update(position=0, best=0.0)
+                    pos = 0
+
+        # baseline edge-trigger: only enter on a genuine change of `agree`
+        # (this dedup is what makes the bot stay flat-and-out after an exit
+        # until direction actually flips, instead of re-entering every run -
+        # isolation testing confirmed this matters a lot in strong trends)
+        if pos == 0 and agree != 0 and agree != st.get("prev_agree", 0):
+            rvol = realized_vol_annualized(st.get("price_history", []))
+            amount = vol_target_size(base_amount, rvol)
+            rvol_pct = rvol * 100 if rvol else 0.0
+            if agree == 1:
+                log(f"{tag}: LONG entry - both timeframes bullish, "
+                    f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
+                    f"-> size {amount} USDT")
+                if send_signal("C", symbol, enter_long, f"{tag} ENTER-LONG", amount):
+                    st.update(position=1, best=latest, trades=st["trades"] + 1)
+            else:
+                log(f"{tag}: SHORT entry - both timeframes bearish, "
+                    f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
+                    f"-> size {amount} USDT")
+                if send_signal("C", symbol, enter_short, f"{tag} ENTER-SHORT", amount):
+                    st.update(position=-1, best=latest, trades=st["trades"] + 1)
+
+        st["prev_agree"] = agree
+
+    if len(st["f_bricks"]) < need or len(st["s_bricks"]) < need:
+        log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
+            f"slow {len(st['s_bricks'])} bricks")
+        return
+    if fast_dir == 0 or slow_dir == 0:
+        fast_dir = tema_alma_dir(st["f_bricks"], B_TEMA, B_ALMA)
+        slow_dir = tema_alma_dir(st["s_bricks"], B_TEMA, B_ALMA)
+        latest = st["f_bricks"][-1] if st["f_bricks"] else 0.0
+        if fast_dir == 0 or slow_dir == 0:
+            log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
+                f"slow {len(st['s_bricks'])} bricks")
+            return
+    side = {0: "flat", 1: "holding LONG", -1: "holding SHORT"}[st["position"]]
+    log(f"{tag}: {side}. fast {fast_dir:+d}  slow {slow_dir:+d}  "
+        f"brick {latest:.4f}  trades {st['trades']}")
+
+
 def run_strategy_b(symbol, names, st, new_closes, price):
+    """Strategy B - the ORIGINAL, UNCHANGED baseline. Fixed $1000 per
+    trade, flat 8.5% trail, plain edge-trigger entry. No Stage 1 changes
+    at all - this is the control group Strategy C is compared against."""
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"B/{symbol}"
     keep = max(B_TEMA * 3, B_ALMA) + 40
@@ -405,7 +563,7 @@ def run_strategy_b(symbol, names, st, new_closes, price):
                     st.update(position=0, best=0.0)
                     pos = 0
 
-        if pos == 0 and agree != 0 and agree != st["prev_agree"]:
+        if pos == 0 and agree != 0 and agree != st.get("prev_agree", 0):
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}")
@@ -439,6 +597,7 @@ def run_strategy_b(symbol, names, st, new_closes, price):
 _HISTORY_CACHE = {}
 
 
+
 def warmup(strategy, symbol, state):
     if symbol in _HISTORY_CACHE:
         pairs, last_ms = _HISTORY_CACHE[symbol]
@@ -466,20 +625,25 @@ def warmup(strategy, symbol, state):
                     trades=0, hour_bucket=st_seed["hour_bucket"],
                     hour_close=st_seed["hour_close"])
 
+    # strategy B and C share identical Renko/indicator warmup - C just
+    # also carries a price_history seed for the volatility calc.
     fb, fa, fd = build_bricks(hourly, B_FAST_BOX, REVERSAL)
     sb, sa, sd = build_bricks(hourly, B_SLOW_BOX, REVERSAL)
-    log(f"B/{symbol}: {len(hourly):,} hourly bars -> {len(fb):,} fast bricks, "
+    log(f"{strategy}/{symbol}: {len(hourly):,} hourly bars -> {len(fb):,} fast bricks, "
         f"{len(sb):,} slow bricks")
     need = max(B_TEMA * 3, B_ALMA) + 2
     if len(fb) < need or len(sb) < need:
-        log(f"B/{symbol}: not enough bricks, need {need} on both")
+        log(f"{strategy}/{symbol}: not enough bricks, need {need} on both")
         return None
     keep = max(B_TEMA * 3, B_ALMA) + 40
-    return dict(f_bricks=fb[-keep:], s_bricks=sb[-keep:],
+    seed = dict(f_bricks=fb[-keep:], s_bricks=sb[-keep:],
                 f_anchor=fa, f_direction=fd, s_anchor=sa, s_direction=sd,
                 last_ms=last_ms, position=0, best=0.0, trades=0,
                 prev_agree=0, hour_bucket=st_seed["hour_bucket"],
                 hour_close=st_seed["hour_close"])
+    if strategy == "C":
+        seed["price_history"] = hourly[-VOL_LOOKBACK_HRS:]
+    return seed
 
 
 def main():
@@ -516,8 +680,10 @@ def main():
 
                 if strategy == "A":
                     run_strategy_a(symbol, names, st, hourly, price)
-                else:
+                elif strategy == "B":
                     run_strategy_b(symbol, names, st, hourly, price)
+                else:
+                    run_strategy_c(symbol, names, st, hourly, price)
 
             except Exception as e:
                 log(f"{strategy}/{symbol}: ERROR {type(e).__name__}: {e}")
