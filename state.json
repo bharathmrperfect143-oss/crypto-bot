@@ -484,12 +484,12 @@
     ],
     "anchor": 4.60905405373087,
     "direction": -1,
-    "last_ms": 1789261800000,
+    "last_ms": 1789262760000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "hour_bucket": 497017,
-    "hour_close": 101.88
+    "hour_close": 102.14
   },
   "A:XRPUSDT": {
     "bricks": [
@@ -976,12 +976,12 @@
     ],
     "anchor": 0.34634510230347526,
     "direction": 1,
-    "last_ms": 1789261800000,
+    "last_ms": 1789262760000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "hour_bucket": 497017,
-    "hour_close": 1.3679
+    "hour_close": 1.3677
   },
   "B:SOLUSDT": {
     "f_bricks": [
@@ -1162,13 +1162,13 @@
     "f_direction": 1,
     "s_anchor": 4.656663294181937,
     "s_direction": 1,
-    "last_ms": 1789261800000,
+    "last_ms": 1789262760000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 0,
     "hour_bucket": 497017,
-    "hour_close": 101.89
+    "hour_close": 102.14
   },
   "B:XRPUSDT": {
     "f_bricks": [
@@ -1349,13 +1349,13 @@
     "f_direction": 1,
     "s_anchor": 0.30042988994722225,
     "s_direction": -1,
-    "last_ms": 1789261800000,
+    "last_ms": 1789262760000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 0,
     "hour_bucket": 497017,
-    "hour_close": 1.3679
+    "hour_close": 1.3677
   },
   "C:SOLUSDT": {
     "f_bricks": [
@@ -1536,13 +1536,13 @@
     "f_direction": 1,
     "s_anchor": 4.656663294181937,
     "s_direction": 1,
-    "last_ms": 1789261800000,
+    "last_ms": 1789262760000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 0,
     "hour_bucket": 497017,
-    "hour_close": 101.89,
+    "hour_close": 102.13,
     "price_history": [
       76.08,
       76.03,
@@ -2445,13 +2445,13 @@
     "f_direction": 1,
     "s_anchor": 0.30042988994722225,
     "s_direction": -1,
-    "last_ms": 1789261800000,
+    "last_ms": 1789262760000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 0,
     "hour_bucket": 497017,
-    "hour_close": 1.3679,
+    "hour_close": 1.3677,
     "price_history": [
       1.0116,
       1.0115,
