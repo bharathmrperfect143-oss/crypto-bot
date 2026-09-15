@@ -62,7 +62,7 @@ import sys
 import time
 import urllib.request
 import urllib.error
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 # ---------------------------------------------------------------- config
 # strategy A - breakout (unchanged)
@@ -125,8 +125,14 @@ LOG_FILE   = "trades.log"
 DRY_RUN    = os.environ.get("DRY_RUN", "").lower() in ("1", "true", "yes")
 
 
+IST = timezone(timedelta(hours=5, minutes=30))
+
 def log(msg):
-    line = f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')}Z  {msg}"
+    # printed in IST so it matches 3Commas/your-local-time directly, no
+    # mental timezone conversion needed. All internal logic (hourly bar
+    # boundaries, state timestamps) still uses UTC/epoch ms underneath -
+    # only the human-readable log line is shown in IST.
+    line = f"{datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')} IST  {msg}"
     print(line, flush=True)
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -158,13 +164,19 @@ def send_signal(strategy, symbol, code, label, amount=None):
         log(f"  DRY RUN - would send {label}  amount={amount} USDT  "
             f"type=quote  order=market")
         return True
+    # FLAT structure - per 3Commas' own official JSON guide
+    # (https://help.3commas.io/en/articles/16281112), the Pine Script
+    # reference example builds code/orderType/amountPerTradeType/
+    # amountPerTrade as SIBLING keys in one flat object - there is no
+    # "data" wrapper. An earlier version of this bot nested these three
+    # fields under "data", which is why 3Commas kept reporting
+    # amountPerTrade as missing/nan even though the value was present -
+    # it was just present in the wrong place in the JSON.
     body = json.dumps({
         "code": code,
-        "data": {
-            "amountPerTrade": amount,
-            "amountPerTradeType": "quote",
-            "orderType": "market",
-        },
+        "orderType": "market",
+        "amountPerTradeType": "quote",
+        "amountPerTrade": amount,
     }).encode()
     req = urllib.request.Request(
         WEBHOOK, data=body,
@@ -174,6 +186,11 @@ def send_signal(strategy, symbol, code, label, amount=None):
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 log(f"  SENT {label}  amount={amount} USDT  (http {r.status})")
+                # Small courtesy delay between webhook sends. (The
+                # repeated "amountPerTrade: nan" declines were actually
+                # caused by the wrong JSON structure above, not a race
+                # condition - keeping this delay anyway is harmless.)
+                time.sleep(2)
                 return True
         except urllib.error.HTTPError as e:
             log(f"  webhook http {e.code} on {label}")
