@@ -1,6 +1,6 @@
 """
-Live signal bot - THREE strategies running side by side (A, B baseline,
-C = B + Stage 1 vol-sizing), for direct A/B comparison on real capital.
+Live signal bot - FOUR strategies running side by side (A, B baseline,
+C = B + Stage 1 vol-sizing, D = unvalidated single-timeframe experiment).
 
 STRATEGY A - BREAKOUT + TRAILING          (unchanged)
     Renko percentage box   2.7%
@@ -36,7 +36,25 @@ the full isolation-test results this decision was based on. That's why
 only that one change is in Strategy C; the others are documented but not
 deployed.
 
-BAR RESOLUTION - THIS MATTERS
+STRATEGY D - SINGLE-TIMEFRAME TEMA/ALMA, ALWAYS IN POSITION  (EXPERIMENTAL,
+                                                    NOT OUT-OF-SAMPLE VALIDATED)
+    ONE Renko box (0.3%), TEMA 30 / ALMA 13 crossover, no second timeframe,
+    no flat state - always long or short, switches direction directly.
+    Entry   crossover direction change must hold for D_CONFIRM_N=8
+            consecutive bricks before the position actually flips.
+    Exit    none separately - flipping to the opposite direction IS the
+            exit (3Commas swing-trade mode: only 2 webhook codes used,
+            Enter Long / Enter Short, no Exit-All).
+    Parameters are the BEST IN-SAMPLE result from a 7,000-config grid
+    search (phase30_single_tf.py) - 95.65% neighbourhood robustness
+    in-sample. CRITICAL CAVEAT: this did NOT survive out-of-sample
+    testing in ANY of 5 independently tried single-timeframe variants
+    (raw crossover, this confirm-delay version, KAMA, deadband,
+    volatility-adaptive box sizing - 30,800 configs total, 0 survivors
+    across all 5). This is deployed as a live experiment at the user's
+    explicit request, not as a validated strategy - treat its results
+    with real skepticism, not as confirmation it works.
+
     Both backtests resample price to HOURLY closes before building Renko
     bricks. This bot therefore does the same. Building bricks from raw
     1-minute closes produces 28-48% MORE bricks - extra bricks created by
@@ -107,6 +125,13 @@ MARKETS = {
         "SOLUSDT": ("C_SOL_ENTER_LONG", "C_SOL_ENTER_SHORT", "C_SOL_EXIT_ALL"),
         "XRPUSDT": ("C_XRP_ENTER_LONG", "C_XRP_ENTER_SHORT", "C_XRP_EXIT_ALL"),
     },
+    "D": {
+        # only 2 codes actually used (D never sends exit-all - it's always
+        # in a position, swing-trade style; the 3rd slot is kept only so
+        # codes_for() stays a uniform 3-tuple across all strategies)
+        "SOLUSDT": ("D_SOL_ENTER_LONG", "D_SOL_ENTER_SHORT", "D_SOL_EXIT_ALL"),
+        "XRPUSDT": ("D_XRP_ENTER_LONG", "D_XRP_ENTER_SHORT", "D_XRP_EXIT_ALL"),
+    },
 }
 
 # base trade amount per (strategy, symbol), in USDT.
@@ -118,7 +143,21 @@ TRADE_AMOUNTS = {
     "A": {"SOLUSDT": 1000, "XRPUSDT": 1000},
     "B": {"SOLUSDT": 1000, "XRPUSDT": 1000},
     "C": {"SOLUSDT": 1000, "XRPUSDT": 1000},
+    "D": {"SOLUSDT": 1000, "XRPUSDT": 1000},
 }
+
+# ---- Strategy D config: single-timeframe TEMA/ALMA, always in position ----
+# Best IN-SAMPLE parameters from phase30_single_tf.py's 7,000-config grid
+# search (box/TEMA/ALMA/confirm_n), 95.65% neighbourhood robustness.
+# UNVALIDATED OUT-OF-SAMPLE: none of 5 independent single-timeframe
+# variants tested (raw, this confirm-delay version, KAMA, deadband,
+# adaptive-box-sizing) survived out-of-sample testing - see the project
+# record. This is a live experiment, not a proven strategy - deployed at
+# the user's explicit request to get real forward-test data.
+D_BOX      = 0.3
+D_TEMA     = 30
+D_ALMA     = 13
+D_CONFIRM_N = 8
 
 STATE_FILE = "state.json"
 LOG_FILE   = "trades.log"
@@ -611,6 +650,69 @@ def run_strategy_b(symbol, names, st, new_closes, price):
         f"brick {latest:.4f}  trades {st['trades']}")
 
 
+def run_strategy_d(symbol, names, st, new_closes, price):
+    """Strategy D - single-timeframe TEMA/ALMA crossover, ALWAYS in a
+    position (no flat state - long or short, switches directly between
+    them). Confirmation-delayed: a new crossover direction must hold for
+    D_CONFIRM_N consecutive bricks before the position actually flips
+    (streak_len == D_CONFIRM_N, exact match, fires once per fresh streak -
+    same design used for Strategy B's confirmation-delay experiment).
+    No trailing exit, no separate EXIT-ALL - this relies on 3Commas'
+    swing-trade mode, which switches direction using only Enter Long/
+    Enter Short signals."""
+    enter_long, enter_short, _ = codes_for(names)
+    tag = f"D/{symbol}"
+    keep = max(D_TEMA * 3, D_ALMA) + 40
+    need = max(D_TEMA * 3, D_ALMA) + 2
+
+    d = 0
+    latest = 0.0
+
+    for c in new_closes:
+        f_new, st["anchor"], st["direction"] = build_bricks(
+            [c], D_BOX, REVERSAL, st["anchor"], st["direction"])
+        if f_new:
+            st["bricks"] = (st["bricks"] + f_new)[-keep:]
+        if not f_new:
+            continue
+        if len(st["bricks"]) < need:
+            continue
+
+        d = tema_alma_dir(st["bricks"], D_TEMA, D_ALMA)
+        if d == 0:
+            continue
+        latest = st["bricks"][-1]
+
+        if d == st.get("streak_dir", 0):
+            st["streak_len"] = st.get("streak_len", 0) + 1
+        else:
+            st["streak_dir"] = d
+            st["streak_len"] = 1
+
+        pos = st["position"]
+        if st["streak_len"] == D_CONFIRM_N and d != pos:
+            side = "LONG" if d == 1 else "SHORT"
+            code = enter_long if d == 1 else enter_short
+            label = f"{tag} ENTER-{side}"
+            log(f"{tag}: {side} entry (confirmed {D_CONFIRM_N} bricks), "
+                f"brick {latest:.4f}, flipping from position {pos:+d}")
+            if send_signal("D", symbol, code, label):
+                st.update(position=d, trades=st["trades"] + 1)
+
+    if len(st["bricks"]) < need:
+        log(f"{tag}: warming up - {len(st['bricks'])} bricks, need {need}")
+        return
+    if d == 0:
+        d = tema_alma_dir(st["bricks"], D_TEMA, D_ALMA)
+        latest = st["bricks"][-1] if st["bricks"] else 0.0
+        if d == 0:
+            log(f"{tag}: warming up - {len(st['bricks'])} bricks, need {need}")
+            return
+    side = {0: "flat(pre-first-entry)", 1: "holding LONG", -1: "holding SHORT"}[st["position"]]
+    log(f"{tag}: {side}. dir {d:+d}  brick {latest:.4f}  trades {st['trades']}  "
+        f"streak {st.get('streak_len', 0)}/{D_CONFIRM_N}")
+
+
 _HISTORY_CACHE = {}
 
 
@@ -640,6 +742,21 @@ def warmup(strategy, symbol, state):
         return dict(bricks=bricks[-(A_BREAKOUT_N * 3):], anchor=anchor,
                     direction=d, last_ms=last_ms, position=0, best=0.0,
                     trades=0, hour_bucket=st_seed["hour_bucket"],
+                    hour_close=st_seed["hour_close"])
+
+    if strategy == "D":
+        need = max(D_TEMA * 3, D_ALMA) + 2
+        bricks, anchor, d = build_bricks(hourly, D_BOX, REVERSAL)
+        log(f"D/{symbol}: {len(hourly):,} hourly bars -> {len(bricks):,} bricks "
+            f"(box={D_BOX}%)")
+        if len(bricks) < need:
+            log(f"D/{symbol}: not enough bricks, need {need}")
+            return None
+        keep = max(D_TEMA * 3, D_ALMA) + 40
+        return dict(bricks=bricks[-keep:], anchor=anchor, direction=d,
+                    last_ms=last_ms, position=0, trades=0,
+                    streak_dir=0, streak_len=0,
+                    hour_bucket=st_seed["hour_bucket"],
                     hour_close=st_seed["hour_close"])
 
     # strategy B and C share identical Renko/indicator warmup - C just
@@ -699,8 +816,10 @@ def main():
                     run_strategy_a(symbol, names, st, hourly, price)
                 elif strategy == "B":
                     run_strategy_b(symbol, names, st, hourly, price)
-                else:
+                elif strategy == "C":
                     run_strategy_c(symbol, names, st, hourly, price)
+                else:
+                    run_strategy_d(symbol, names, st, hourly, price)
 
             except Exception as e:
                 log(f"{strategy}/{symbol}: ERROR {type(e).__name__}: {e}")
