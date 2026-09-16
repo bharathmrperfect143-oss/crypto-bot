@@ -6419,3 +6419,69 @@
 2026-09-16 18:01:39 IST  C/SOLUSDT: 24 min, hour not complete yet, price 97.3900
 2026-09-16 18:01:40 IST  C/XRPUSDT: 24 min, hour not complete yet, price 1.2810
 2026-09-16 18:01:40 IST  done
+2026-09-16 18:22:08 IST  ============================================================
+2026-09-16 18:22:09 IST  A/SOLUSDT: 21 min, hour not complete yet, price 97.6300
+2026-09-16 18:22:09 IST  A/XRPUSDT: 21 min, hour not complete yet, price 1.2845
+2026-09-16 18:22:10 IST  B/SOLUSDT: 21 min, hour not complete yet, price 97.6300
+2026-09-16 18:22:11 IST  B/XRPUSDT: 21 min, hour not complete yet, price 1.2844
+2026-09-16 18:22:12 IST  C/SOLUSDT: 21 min, hour not complete yet, price 97.6300
+2026-09-16 18:22:12 IST  C/XRPUSDT: 21 min, hour not complete yet, price 1.2844
+2026-09-16 18:22:12 IST  D/SOLUSDT: first run - pulling 900 days
+2026-09-16 18:23:16 IST      ...50,000 candles
+2026-09-16 18:24:19 IST      ...100,000 candles
+2026-09-16 18:25:23 IST      ...150,000 candles
+2026-09-16 18:26:26 IST      ...200,000 candles
+2026-09-16 18:27:32 IST      ...250,000 candles
+2026-09-16 18:28:36 IST      ...300,000 candles
+2026-09-16 18:29:40 IST      ...350,000 candles
+2026-09-16 18:30:45 IST      ...400,000 candles
+2026-09-16 18:31:50 IST      ...450,000 candles
+2026-09-16 18:32:53 IST      ...500,000 candles
+2026-09-16 18:33:56 IST      ...550,000 candles
+2026-09-16 18:34:59 IST      ...600,000 candles
+2026-09-16 18:36:03 IST      ...650,000 candles
+2026-09-16 18:37:07 IST      ...700,000 candles
+2026-09-16 18:38:11 IST      ...750,000 candles
+2026-09-16 18:39:15 IST      ...800,000 candles
+2026-09-16 18:40:22 IST      ...850,000 candles
+2026-09-16 18:41:26 IST      ...900,000 candles
+2026-09-16 18:42:29 IST      ...950,000 candles
+2026-09-16 18:43:33 IST      ...1,000,000 candles
+2026-09-16 18:44:37 IST      ...1,050,000 candles
+2026-09-16 18:45:41 IST      ...1,100,000 candles
+2026-09-16 18:46:44 IST      ...1,150,000 candles
+2026-09-16 18:47:48 IST      ...1,200,000 candles
+2026-09-16 18:48:51 IST      ...1,250,000 candles
+2026-09-16 18:49:50 IST  D/SOLUSDT: 1,296,000 minutes -> 21,600 hourly bars
+2026-09-16 18:49:50 IST  D/SOLUSDT: 21,600 hourly bars -> 10,438 bricks (box=0.3%)
+2026-09-16 18:49:50 IST  D/SOLUSDT: warm-up complete, starting FLAT
+2026-09-16 18:49:50 IST  D/XRPUSDT: first run - pulling 900 days
+2026-09-16 18:50:53 IST      ...50,000 candles
+2026-09-16 18:51:57 IST      ...100,000 candles
+2026-09-16 18:52:59 IST      ...150,000 candles
+2026-09-16 18:54:03 IST      ...200,000 candles
+2026-09-16 18:55:06 IST      ...250,000 candles
+2026-09-16 18:56:10 IST      ...300,000 candles
+2026-09-16 18:57:12 IST      ...350,000 candles
+2026-09-16 18:58:14 IST      ...400,000 candles
+2026-09-16 18:59:18 IST      ...450,000 candles
+2026-09-16 19:00:24 IST      ...500,000 candles
+2026-09-16 19:01:28 IST      ...550,000 candles
+2026-09-16 19:02:30 IST      ...600,000 candles
+2026-09-16 19:03:33 IST      ...650,000 candles
+2026-09-16 19:04:37 IST      ...700,000 candles
+2026-09-16 19:05:41 IST      ...750,000 candles
+2026-09-16 19:06:44 IST      ...800,000 candles
+2026-09-16 19:07:49 IST      ...850,000 candles
+2026-09-16 19:08:52 IST      ...900,000 candles
+2026-09-16 19:09:55 IST      ...950,000 candles
+2026-09-16 19:10:59 IST      ...1,000,000 candles
+2026-09-16 19:12:05 IST      ...1,050,000 candles
+2026-09-16 19:13:09 IST      ...1,100,000 candles
+2026-09-16 19:14:13 IST      ...1,150,000 candles
+2026-09-16 19:15:16 IST      ...1,200,000 candles
+2026-09-16 19:16:19 IST      ...1,250,000 candles
+2026-09-16 19:17:17 IST  D/XRPUSDT: 1,296,000 minutes -> 21,600 hourly bars
+2026-09-16 19:17:17 IST  D/XRPUSDT: 21,600 hourly bars -> 9,281 bricks (box=0.3%)
+2026-09-16 19:17:17 IST  D/XRPUSDT: warm-up complete, starting FLAT
+2026-09-16 19:17:17 IST  done
