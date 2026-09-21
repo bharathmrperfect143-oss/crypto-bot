@@ -484,12 +484,12 @@
     ],
     "anchor": 4.715621777516554,
     "direction": 1,
-    "last_ms": 1789973940000,
+    "last_ms": 1789975200000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "hour_bucket": 497214,
-    "hour_close": 112.14
+    "hour_bucket": 497215,
+    "hour_close": 111.76
   },
   "A:XRPUSDT": {
     "bricks": [
@@ -976,12 +976,12 @@
     ],
     "anchor": 0.3463451023034753,
     "direction": 1,
-    "last_ms": 1789973940000,
+    "last_ms": 1789975200000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "hour_bucket": 497214,
-    "hour_close": 1.4365
+    "hour_bucket": 497215,
+    "hour_close": 1.4389
   },
   "B:SOLUSDT": {
     "f_bricks": [
@@ -1162,13 +1162,13 @@
     "f_direction": -1,
     "s_anchor": 4.731770766668742,
     "s_direction": 1,
-    "last_ms": 1789973940000,
+    "last_ms": 1789975200000,
     "position": 1,
     "best": 113.61640701268983,
     "trades": 1,
     "prev_agree": 1,
-    "hour_bucket": 497214,
-    "hour_close": 112.13
+    "hour_bucket": 497215,
+    "hour_close": 111.76
   },
   "B:XRPUSDT": {
     "f_bricks": [
@@ -1349,13 +1349,13 @@
     "f_direction": 1,
     "s_anchor": 0.30042988994722225,
     "s_direction": -1,
-    "last_ms": 1789973940000,
+    "last_ms": 1789975200000,
     "position": 1,
     "best": 1.4282462475762714,
     "trades": 2,
     "prev_agree": 1,
-    "hour_bucket": 497214,
-    "hour_close": 1.4366
+    "hour_bucket": 497215,
+    "hour_close": 1.439
   },
   "C:SOLUSDT": {
     "f_bricks": [
@@ -1536,15 +1536,14 @@
     "f_direction": -1,
     "s_anchor": 4.731770766668742,
     "s_direction": 1,
-    "last_ms": 1789973940000,
+    "last_ms": 1789975200000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 1,
-    "hour_bucket": 497214,
-    "hour_close": 112.14,
+    "hour_bucket": 497215,
+    "hour_close": 111.76,
     "price_history": [
-      94.3,
       94.46,
       94.1,
       93.92,
@@ -2263,7 +2262,8 @@
       111.22,
       111.58,
       111.48,
-      111.76
+      111.76,
+      112.14
     ]
   },
   "C:XRPUSDT": {
@@ -2445,15 +2445,14 @@
     "f_direction": 1,
     "s_anchor": 0.30042988994722225,
     "s_direction": -1,
-    "last_ms": 1789973940000,
+    "last_ms": 1789975200000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 1,
-    "hour_bucket": 497214,
-    "hour_close": 1.4366,
+    "hour_bucket": 497215,
+    "hour_close": 1.4386,
     "price_history": [
-      1.5787,
       1.5638,
       1.5287,
       1.5021,
@@ -3172,12 +3171,12 @@
       1.4159,
       1.4229,
       1.419,
-      1.43
+      1.43,
+      1.4366
     ]
   },
   "D:SOLUSDT": {
     "bricks": [
-      104.48358070788174,
       105.42675681198847,
       104.79703145000536,
       103.54884251071874,
@@ -3306,21 +3305,21 @@
       110.27189605525098,
       110.93451987864701,
       112.27173657117802,
-      111.26732343828292
+      111.26732343828292,
+      111.93592878482359
     ],
-    "anchor": 4.711935625222997,
-    "direction": -1,
-    "last_ms": 1789973940000,
+    "anchor": 4.717926643182595,
+    "direction": 1,
+    "last_ms": 1789975200000,
     "position": 0,
     "trades": 0,
     "streak_dir": 1,
-    "streak_len": 34,
-    "hour_bucket": 497214,
-    "hour_close": 112.13
+    "streak_len": 35,
+    "hour_bucket": 497215,
+    "hour_close": 111.74
   },
   "D:XRPUSDT": {
     "bricks": [
-      1.3944519863400167,
       1.390281142911283,
       1.3861227745875202,
       1.3986353422990367,
@@ -3449,16 +3448,17 @@
       1.4240003511960968,
       1.4112608612971245,
       1.4197411278126588,
-      1.428272352249685
+      1.428272352249685,
+      1.432557169306434
     ],
-    "anchor": 0.3564655685960245,
+    "anchor": 0.359461077575823,
     "direction": 1,
-    "last_ms": 1789973940000,
+    "last_ms": 1789975200000,
     "position": 0,
     "trades": 0,
     "streak_dir": 1,
-    "streak_len": 26,
-    "hour_bucket": 497214,
-    "hour_close": 1.4365
+    "streak_len": 27,
+    "hour_bucket": 497215,
+    "hour_close": 1.4389
   }
 }
