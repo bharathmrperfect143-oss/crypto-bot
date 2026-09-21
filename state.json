@@ -1,7 +1,6 @@
 {
   "A:SOLUSDT": {
     "bricks": [
-      206.10509101890767,
       200.68655405930645,
       195.41047133330719,
       190.27309769552798,
@@ -480,16 +479,17 @@
       105.8833393241362,
       108.74218948588785,
       111.6782286020068,
-      114.69354077426097
+      114.69354077426097,
+      117.79026637516598
     ],
-    "anchor": 4.742263708462975,
+    "anchor": 4.768905639409396,
     "direction": 1,
-    "last_ms": 1789999080000,
+    "last_ms": 1790000340000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "hour_bucket": 497221,
-    "hour_close": 118.13
+    "hour_bucket": 497222,
+    "hour_close": 118.21
   },
   "A:XRPUSDT": {
     "bricks": [
@@ -976,12 +976,12 @@
     ],
     "anchor": 0.3729870332498965,
     "direction": 1,
-    "last_ms": 1789999080000,
+    "last_ms": 1790000340000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "hour_bucket": 497221,
-    "hour_close": 1.491
+    "hour_bucket": 497222,
+    "hour_close": 1.4835
   },
   "B:SOLUSDT": {
     "f_bricks": [
@@ -1162,13 +1162,13 @@
     "f_direction": 1,
     "s_anchor": 4.731770766668742,
     "s_direction": 1,
-    "last_ms": 1789999080000,
+    "last_ms": 1790000340000,
     "position": 1,
     "best": 115.88873515294364,
     "trades": 1,
     "prev_agree": 1,
-    "hour_bucket": 497221,
-    "hour_close": 118.15
+    "hour_bucket": 497222,
+    "hour_close": 118.2
   },
   "B:XRPUSDT": {
     "f_bricks": [
@@ -1349,13 +1349,13 @@
     "f_direction": 1,
     "s_anchor": 0.30042988994722225,
     "s_direction": -1,
-    "last_ms": 1789999080000,
+    "last_ms": 1790000340000,
     "position": 1,
     "best": 1.485947395978353,
     "trades": 2,
     "prev_agree": 1,
-    "hour_bucket": 497221,
-    "hour_close": 1.4907
+    "hour_bucket": 497222,
+    "hour_close": 1.4831
   },
   "C:SOLUSDT": {
     "f_bricks": [
@@ -1536,15 +1536,14 @@
     "f_direction": 1,
     "s_anchor": 4.731770766668742,
     "s_direction": 1,
-    "last_ms": 1789999080000,
+    "last_ms": 1790000340000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 1,
-    "hour_bucket": 497221,
-    "hour_close": 118.14,
+    "hour_bucket": 497222,
+    "hour_close": 118.18,
     "price_history": [
-      94.12,
       93.25,
       93.07,
       94.29,
@@ -2263,7 +2262,8 @@
       115.93,
       116.01,
       116.8,
-      116.82
+      116.82,
+      118.06
     ]
   },
   "C:XRPUSDT": {
@@ -2445,15 +2445,14 @@
     "f_direction": 1,
     "s_anchor": 0.30042988994722225,
     "s_direction": -1,
-    "last_ms": 1789999080000,
+    "last_ms": 1790000340000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 1,
-    "hour_bucket": 497221,
-    "hour_close": 1.4907,
+    "hour_bucket": 497222,
+    "hour_close": 1.4831,
     "price_history": [
-      1.5004,
       1.4519,
       1.4391,
       1.4809,
@@ -3172,12 +3171,12 @@
       1.4744,
       1.4906,
       1.4856,
-      1.4877
+      1.4877,
+      1.4901
     ]
   },
   "D:SOLUSDT": {
     "bricks": [
-      104.17106750536568,
       103.54884251071874,
       103.23912513531283,
       102.93033413291413,
@@ -3306,17 +3305,18 @@
       111.93592878482359,
       115.33970528283729,
       115.68572439868575,
-      116.73002255634725
+      116.73002255634725,
+      117.783747621674
     ],
-    "anchor": 4.759863768899773,
+    "anchor": 4.768850295839169,
     "direction": 1,
-    "last_ms": 1789999080000,
+    "last_ms": 1790000340000,
     "position": 0,
     "trades": 0,
     "streak_dir": 1,
-    "streak_len": 38,
-    "hour_bucket": 497221,
-    "hour_close": 118.11
+    "streak_len": 39,
+    "hour_bucket": 497222,
+    "hour_close": 118.19
   },
   "D:XRPUSDT": {
     "bricks": [
@@ -3453,12 +3453,12 @@
     ],
     "anchor": 0.3984026943132033,
     "direction": 1,
-    "last_ms": 1789999080000,
+    "last_ms": 1790000340000,
     "position": 0,
     "trades": 0,
     "streak_dir": 1,
     "streak_len": 30,
-    "hour_bucket": 497221,
-    "hour_close": 1.4905
+    "hour_bucket": 497222,
+    "hour_close": 1.4831
   }
 }
