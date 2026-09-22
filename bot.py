@@ -528,7 +528,10 @@ def run_strategy_c(symbol, names, st, new_closes, price):
         # baseline edge-trigger: only enter on a genuine change of `agree`
         # (this dedup is what makes the bot stay flat-and-out after an exit
         # until direction actually flips, instead of re-entering every run -
-        # isolation testing confirmed this matters a lot in strong trends)
+        # isolation testing confirmed this matters a lot in strong trends).
+        # CRITICAL: prev_agree is only marked CONSUMED on a SUCCESSFUL send,
+        # so a failed first attempt is retried on the next brick (the original
+        # code set it unconditionally, silently dropping the signal).
         if pos == 0 and agree != 0 and agree != st.get("prev_agree", 0):
             rvol = realized_vol_annualized(st.get("price_history", []))
             amount = vol_target_size(base_amount, rvol)
@@ -539,14 +542,15 @@ def run_strategy_c(symbol, names, st, new_closes, price):
                     f"-> size {amount} USDT")
                 if send_signal("C", symbol, enter_long, f"{tag} ENTER-LONG", amount):
                     st.update(position=1, best=latest, trades=st["trades"] + 1)
+                    st["prev_agree"] = agree
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
                     f"-> size {amount} USDT")
                 if send_signal("C", symbol, enter_short, f"{tag} ENTER-SHORT", amount):
                     st.update(position=-1, best=latest, trades=st["trades"] + 1)
-
-        st["prev_agree"] = agree
+                    st["prev_agree"] = agree
+            # On failure: leave prev_agree untouched so the next brick retries.
 
     if len(st["f_bricks"]) < need or len(st["s_bricks"]) < need:
         log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
@@ -619,19 +623,30 @@ def run_strategy_b(symbol, names, st, new_closes, price):
                     st.update(position=0, best=0.0)
                     pos = 0
 
+        # Edge-trigger entry: only on a genuine agree change from prev_agree.
+        # CRITICAL: prev_advance is only marked CONSUMED on a SUCCESSFUL send
+        # (the old code set it unconditionally, which silently dropped the
+        # signal after a single failed webhook attempt - if the first ENTER-
+        # LONG failed (HTTP 5xx, secret empty, etc.), the bot stayed flat
+        # even though agree stayed +1 for many subsequent bricks).
         if pos == 0 and agree != 0 and agree != st.get("prev_agree", 0):
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}")
                 if send_signal("B", symbol, enter_long, f"{tag} ENTER-LONG"):
                     st.update(position=1, best=latest, trades=st["trades"] + 1)
+                    st["prev_agree"] = agree
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}")
                 if send_signal("B", symbol, enter_short, f"{tag} ENTER-SHORT"):
                     st.update(position=-1, best=latest, trades=st["trades"] + 1)
-
-        st["prev_agree"] = agree
+                    st["prev_agree"] = agree
+            # On failure: leave prev_agree untouched so the next brick can retry.
+        elif pos == 0 and agree != 0 and agree == st.get("prev_agree", 0):
+            # agree stable but unprocessed (previous fire must have failed) -
+            # keep the edge-trigger alive by NOT touching prev_agree here.
+            pass
 
     if len(st["f_bricks"]) < need or len(st["s_bricks"]) < need:
         log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
@@ -654,9 +669,15 @@ def run_strategy_d(symbol, names, st, new_closes, price):
     """Strategy D - single-timeframe TEMA/ALMA crossover, ALWAYS in a
     position (no flat state - long or short, switches directly between
     them). Confirmation-delayed: a new crossover direction must hold for
-    D_CONFIRM_N consecutive bricks before the position actually flips
-    (streak_len == D_CONFIRM_N, exact match, fires once per fresh streak -
-    same design used for Strategy B's confirmation-delay experiment).
+    D_CONFIRM_N consecutive bricks before the position actually flips.
+    The fire is RETRYABLE - once streak_len >= D_CONFIRM_N and d != pos,
+    every subsequent matching brick attempts the send until success
+    (st["streak_fired"] gates retry). The original `streak_len ==
+    D_CONFIRM_N` exact-match check was one-shot: if the first send
+    failed (HTTP 5xx, secret empty, etc.), streak_len kept climbing past
+    8 and the fire condition could never be true again until direction
+    flipped. That's exactly the silent-failure mode Strategy D got stuck
+    in on 2026-09-17 (codes empty -> streak=45, pos=0, trades=0 forever).
     No trailing exit, no separate EXIT-ALL - this relies on 3Commas'
     swing-trade mode, which switches direction using only Enter Long/
     Enter Short signals."""
@@ -688,9 +709,16 @@ def run_strategy_d(symbol, names, st, new_closes, price):
         else:
             st["streak_dir"] = d
             st["streak_len"] = 1
+            # reset retry gate when direction changes - new streak gets a
+            # fresh shot at firing.
+            st["streak_fired"] = False
 
         pos = st["position"]
-        if st["streak_len"] == D_CONFIRM_N and d != pos:
+        # Retryable fire: every brick with streak_len >= D_CONFIRM_N and
+        # d != pos attempts the send, until either success (mark fired)
+        # or direction change (reset above).
+        if (st["streak_len"] >= D_CONFIRM_N and d != pos
+                and not st.get("streak_fired", False)):
             side = "LONG" if d == 1 else "SHORT"
             code = enter_long if d == 1 else enter_short
             label = f"{tag} ENTER-{side}"
@@ -698,6 +726,8 @@ def run_strategy_d(symbol, names, st, new_closes, price):
                 f"brick {latest:.4f}, flipping from position {pos:+d}")
             if send_signal("D", symbol, code, label):
                 st.update(position=d, trades=st["trades"] + 1)
+                st["streak_fired"] = True
+            # On failure: leave streak_fired False so the next brick retries.
 
     if len(st["bricks"]) < need:
         log(f"{tag}: warming up - {len(st['bricks'])} bricks, need {need}")
@@ -755,7 +785,7 @@ def warmup(strategy, symbol, state):
         keep = max(D_TEMA * 3, D_ALMA) + 40
         return dict(bricks=bricks[-keep:], anchor=anchor, direction=d,
                     last_ms=last_ms, position=0, trades=0,
-                    streak_dir=0, streak_len=0,
+                    streak_dir=0, streak_len=0, streak_fired=False,
                     hour_bucket=st_seed["hour_bucket"],
                     hour_close=st_seed["hour_close"])
 
