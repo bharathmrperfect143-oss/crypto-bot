@@ -121,7 +121,23 @@ def api_get(path, query_params=None):
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=API_TIMEOUT) as r:
-                return json.loads(r.read().decode())
+                raw = r.read()
+                body_text = raw.decode("utf-8", errors="replace")
+                # Capture empty body or non-JSON for diagnosis - 3Commas
+                # sometimes returns 200 OK with empty body for endpoints
+                # the API key can't access, which is the #1 cause of
+                # JSONDecodeError on what looks like a successful call.
+                if not body_text.strip():
+                    raise RuntimeError(
+                        f"empty response body from {url} "
+                        f"(HTTP {r.status}, content-length={r.headers.get('Content-Length', '?')})")
+                try:
+                    return json.loads(body_text)
+                except json.JSONDecodeError as je:
+                    preview = body_text[:300].replace("\n", " ")
+                    raise RuntimeError(
+                        f"non-JSON response from {url} (HTTP {r.status}): "
+                        f"{preview!r} (parse error: {je.msg})")
         except urllib.error.HTTPError as e:
             if e.code in (401, 403):
                 body = ""
