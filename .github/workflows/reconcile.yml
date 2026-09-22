@@ -41,6 +41,12 @@ jobs:
           D_XRP_EXIT_ALL: ${{ secrets.D_XRP_EXIT_ALL }}
         run: python check_secrets.py
 
+      - name: 3commas api diagnostic
+        env:
+          THREECOMMAS_API_KEY: ${{ secrets.THREECOMMAS_API_KEY }}
+          THREECOMMAS_API_SECRET: ${{ secrets.THREECOMMAS_API_SECRET }}
+        run: python diag_3commas.py
+
       - name: run reconciliation
         env:
           THREECOMMAS_API_KEY: ${{ secrets.THREECOMMAS_API_KEY }}
