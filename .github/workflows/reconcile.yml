@@ -1,0 +1,55 @@
+name: reconcile
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: checkout repo
+        uses: actions/checkout@v4
+
+      - name: secrets check
+        env:
+          SOL_ENTER_LONG: ${{ secrets.SOL_ENTER_LONG }}
+          SOL_ENTER_SHORT: ${{ secrets.SOL_ENTER_SHORT }}
+          SOL_EXIT_ALL: ${{ secrets.SOL_EXIT_ALL }}
+          XRP_ENTER_LONG: ${{ secrets.XRP_ENTER_LONG }}
+          XRP_ENTER_SHORT: ${{ secrets.XRP_ENTER_SHORT }}
+          XRP_EXIT_ALL: ${{ secrets.XRP_EXIT_ALL }}
+          B_SOL_ENTER_LONG: ${{ secrets.B_SOL_ENTER_LONG }}
+          B_SOL_ENTER_SHORT: ${{ secrets.B_SOL_ENTER_SHORT }}
+          B_SOL_EXIT_ALL: ${{ secrets.B_SOL_EXIT_ALL }}
+          B_XRP_ENTER_LONG: ${{ secrets.B_XRP_ENTER_LONG }}
+          B_XRP_ENTER_SHORT: ${{ secrets.B_XRP_ENTER_SHORT }}
+          B_XRP_EXIT_ALL: ${{ secrets.B_XRP_EXIT_ALL }}
+          C_SOL_ENTER_LONG: ${{ secrets.C_SOL_ENTER_LONG }}
+          C_SOL_ENTER_SHORT: ${{ secrets.C_SOL_ENTER_SHORT }}
+          C_SOL_EXIT_ALL: ${{ secrets.C_SOL_EXIT_ALL }}
+          C_XRP_ENTER_LONG: ${{ secrets.C_XRP_ENTER_LONG }}
+          C_XRP_ENTER_SHORT: ${{ secrets.C_XRP_ENTER_SHORT }}
+          C_XRP_EXIT_ALL: ${{ secrets.C_XRP_EXIT_ALL }}
+          D_SOL_ENTER_LONG: ${{ secrets.D_SOL_ENTER_LONG }}
+          D_SOL_ENTER_SHORT: ${{ secrets.D_SOL_ENTER_SHORT }}
+          D_SOL_EXIT_ALL: ${{ secrets.D_SOL_EXIT_ALL }}
+          D_XRP_ENTER_LONG: ${{ secrets.D_XRP_ENTER_LONG }}
+          D_XRP_ENTER_SHORT: ${{ secrets.D_XRP_ENTER_SHORT }}
+          D_XRP_EXIT_ALL: ${{ secrets.D_XRP_EXIT_ALL }}
+        run: python check_secrets.py
+
+      - name: run reconciliation
+        env:
+          THREECOMMAS_API_KEY: ${{ secrets.THREECOMMAS_API_KEY }}
+          THREECOMMAS_API_SECRET: ${{ secrets.THREECOMMAS_API_SECRET }}
+        run: python reconcile_3commas.py
+
+      - name: upload log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reconcile-log
+          path: trades.log
