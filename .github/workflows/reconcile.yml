@@ -59,3 +59,17 @@ jobs:
         with:
           name: reconcile-log
           path: trades.log
+
+      - name: Heartbeat (success)
+        if: success()
+        run: |
+          if [ -n "${{ secrets.HEALTHCHECK_PING_URL_RECONCILE }}" ]; then
+            curl -fsS --retry 3 --max-time 10 "${{ secrets.HEALTHCHECK_PING_URL_RECONCILE }}" || true
+          fi
+
+      - name: Heartbeat (failure)
+        if: failure()
+        run: |
+          if [ -n "${{ secrets.HEALTHCHECK_PING_URL_RECONCILE }}" ]; then
+            curl -fsS --retry 3 --max-time 10 "${{ secrets.HEALTHCHECK_PING_URL_RECONCILE }}/fail" || true
+          fi
