@@ -73,7 +73,6 @@ def log(level, msg):
 
 
 def sign_v2(method, path, body, secret):
-    """v2 HMAC: Base64(HMAC_SHA256(secret, payload))"""
     ts = str(int(time.time() * 1000))
     recv = str(RECV_WINDOW_MS)
     payload = f"{method}\n{path}\n{ts}\n{recv}\n{body}"
@@ -84,7 +83,6 @@ def sign_v2(method, path, body, secret):
 
 
 def api_get(path):
-    """Signed GET against 3Commas v2 API."""
     api_key = os.environ.get("THREECOMMAS_API_KEY", "")
     secret = os.environ.get("THREECOMMAS_API_SECRET", "")
     if not api_key:
@@ -143,35 +141,63 @@ def api_get(path):
 
 
 def fetch_active_strategies():
-    """GET /open_api/strategies/live - currently-active strategies."""
     return api_get("/open_api/strategies/live")
+
+
+def normalize_pair(p):
+    """Normalize pair to BASEQUOTE form. Accepts SOLUSDT, USDT_SOL, SOL/USDT, etc."""
+    p = str(p or "").upper().replace("_", "").replace("/", "").replace("-", "")
+    if not p:
+        return ""
+    # Stablecoins are unambiguous quotes - use them to detect QUOTE_BASE format
+    for quote in ("USDT", "USDC", "BUSD", "USD"):
+        if p.startswith(quote) and len(p) > len(quote):
+            base = p[len(quote):]
+            if base and base != quote:
+                return f"{base}{quote}"
+    return p
+
+
+def get_bot_name(deal):
+    """Extract bot name from various possible v2 fields."""
+    for f in ("name", "bot_name", "strategy_name", "title"):
+        if deal.get(f):
+            return str(deal[f])
+    sig = deal.get("signalBot") or {}
+    if isinstance(sig, dict):
+        for f in ("name", "title", "botName"):
+            if sig.get(f):
+                return str(sig[f])
+    prof = deal.get("profileStrategies") or {}
+    if isinstance(prof, dict):
+        for f in ("name", "title"):
+            if prof.get(f):
+                return str(prof[f])
+    return ""
 
 
 def deal_matches_strategy(deal, cfg):
     if cfg.get("bot_id"):
-        return deal.get("id") == cfg["bot_id"] or deal.get("bot_id") == cfg["bot_id"]
+        return deal.get("strategyId") == cfg["bot_id"] or deal.get("id") == cfg["bot_id"]
     substr = cfg.get("name_substr", "").lower()
-    pair = cfg.get("pair", "")
-    if not substr or not pair:
+    cfg_pair_norm = normalize_pair(cfg.get("pair", ""))
+    if not substr or not cfg_pair_norm:
         return False
-    bot_name = str(
-        deal.get("name", "") or
-        deal.get("bot_name", "") or
-        deal.get("strategy_name", "") or
-        ""
-    ).lower()
-    deal_pair = str(deal.get("pair", "") or deal.get("market", ""))
-    return substr in bot_name and deal_pair == pair
+    bot_name = get_bot_name(deal).lower()
+    deal_pair_norm = normalize_pair(deal.get("pair", "") or deal.get("market", ""))
+    return substr in bot_name and deal_pair_norm == cfg_pair_norm
 
 
 def deal_side(deal):
+    """v2 status: 'entered'=long, 'sold'/'short'=short."""
     s = str(
+        deal.get("currentPosition", "") or
         deal.get("side", "") or
         deal.get("direction", "") or
         deal.get("position_side", "") or
         deal.get("status", "")
     ).lower()
-    if s in ("bought", "buy", "long", "active_long", "1"):
+    if s in ("bought", "buy", "long", "active_long", "entered", "1"):
         return 1
     if s in ("sold", "sell", "short", "active_short", "-1"):
         return -1
