@@ -350,6 +350,20 @@ def main():
         else:
             actual_pos = 0
 
+        # DIAGNOSTIC (added 23 Sep 2026, after deal_side() was found to
+        # misread LONG as SHORT on real D-strategy deals - the real v2
+        # API response for these deals has NO side/direction/
+        # position_side field at all, so the fallback chain reaches
+        # currentPosition, whose sign convention turned out not to match
+        # what was assumed). Rather than guess again, dump the FULL raw
+        # deal JSON whenever the direction read is going to matter for
+        # this key, so the next mismatch is diagnosable from ONE run
+        # instead of a back-and-forth.
+        if believed_pos != 0 and actual_for_key:
+            for d in actual_for_key:
+                log("INFO", f"  {key} raw deal JSON (for direction "
+                    f"debugging): {json.dumps(d, default=str)}")
+
         if believed_pos == 0 and actual_count > 0:
             side_str = {1: "LONG", -1: "SHORT"}.get(actual_pos, "?")
             mismatches.append((key, f"bot flat but 3Commas has {side_str} "
