@@ -48,20 +48,34 @@ MAX_RETRIES = 3
 RECV_WINDOW_MS = 60000
 
 # Strategy key -> bot identification
-# Match by signalBot.name substring + pair. v2 bot names look like:
-#   "B-SOL - TwoTF Base"   "B-XRP - TwoTF Base"   <- B baseline (confirmed)
-#   "A-SOL - ..."            (TBD by user)        <- A breakout
-#   "C-SOL - TwoTF Vol"     (TBD)                 <- C vol-targeted
-#   "D-SOL - SingleTF"      (TBD)                 <- D single-timeframe
+# FIXED 23 Sep 2026: the previous substrings (DB160/DB-TEMA/DB-STAGE1)
+# were leftover from an OLD 3Commas bot-naming convention, before a
+# rename that this project's own record confirms happened. The REAL
+# current bot names (confirmed against a live 3Commas dashboard
+# screenshot, not assumed) are:
+#   A-SOL - Breakout   / A-XRP - Breakout
+#   B-SOL - TwoTF Base / B-XRP - TwoTF Base
+#   C-SOL - TwoTF Vol  / C-XRP - TwoTF Vol
+#   D-SOL - SingleTF   / D-XRP - SingleTF
+# Only "SingleTF" (Strategy D) happened to still match the old
+# substring by coincidence - A, B, and C were NEVER actually being
+# matched against real 3Commas data. Any "healthy" reading for A/B/C
+# from a prior run was either a false positive (both sides showing
+# nothing, at a moment when the strategy was genuinely still flat) or
+# should be re-examined - it was not a real confirmation.
+# Each substring below includes the strategy+symbol prefix (e.g.
+# "A-SOL") rather than a bare strategy word, so the match is precise on
+# its own and does not rely solely on the separate pair-field check
+# below as a second line of defense.
 BOT_CONFIG = {
-    "A:SOLUSDT": {"name_substr": "A-SOL",      "bot_id": None, "pair": "USDT_SOL"},
-    "A:XRPUSDT": {"name_substr": "A-XRP",      "bot_id": None, "pair": "USDT_XRP"},
-    "B:SOLUSDT": {"name_substr": "TwoTF Base", "bot_id": None, "pair": "USDT_SOL"},
-    "B:XRPUSDT": {"name_substr": "TwoTF Base", "bot_id": None, "pair": "USDT_XRP"},
-    "C:SOLUSDT": {"name_substr": "C-SOL",      "bot_id": None, "pair": "USDT_SOL"},
-    "C:XRPUSDT": {"name_substr": "C-XRP",      "bot_id": None, "pair": "USDT_XRP"},
-    "D:SOLUSDT": {"name_substr": "SingleTF",   "bot_id": None, "pair": "USDT_SOL"},
-    "D:XRPUSDT": {"name_substr": "SingleTF",   "bot_id": None, "pair": "USDT_XRP"},
+    "A:SOLUSDT": {"name_substr": "A-SOL",     "bot_id": None, "pair": "USDT_SOL"},
+    "A:XRPUSDT": {"name_substr": "A-XRP",     "bot_id": None, "pair": "USDT_XRP"},
+    "B:SOLUSDT": {"name_substr": "B-SOL",     "bot_id": None, "pair": "USDT_SOL"},
+    "B:XRPUSDT": {"name_substr": "B-XRP",     "bot_id": None, "pair": "USDT_XRP"},
+    "C:SOLUSDT": {"name_substr": "C-SOL",     "bot_id": None, "pair": "USDT_SOL"},
+    "C:XRPUSDT": {"name_substr": "C-XRP",     "bot_id": None, "pair": "USDT_XRP"},
+    "D:SOLUSDT": {"name_substr": "D-SOL",     "bot_id": None, "pair": "USDT_SOL"},
+    "D:XRPUSDT": {"name_substr": "D-XRP",     "bot_id": None, "pair": "USDT_XRP"},
 }
 
 D_CONFIRM_N = 8
@@ -148,6 +162,7 @@ def api_get(path):
 
 
 def fetch_active_strategies():
+    """GET /open_api/strategies/live - currently-active strategies."""
     return api_get("/open_api/strategies/live")
 
 
@@ -195,37 +210,46 @@ def deal_matches_strategy(deal, cfg):
 
 
 def deal_side(deal):
-    """Infer LONG/SHORT from v2 strategy fields.
+    """Direction inference, explicit fallback chain (order matters):
+    1. explicit side/direction/position_side text field, if present
+    2. numeric currentPosition sign (this is a POSITION SIZE, e.g.
+       12.61 or 7.98 - not a side word)
+    3. status string ("entered"=long, "sold"/"short"=short)
+    4. unknown (0) - logged as WARN elsewhere, never treated as FAIL
 
-    v2 has no explicit 'side' field. Inference:
-      - 'side'/'direction' field set: use it
-      - else currentPosition numeric > 0 = LONG, < 0 = SHORT
-      - else status='sold' etc = SHORT, 'entered' = LONG
-    Returns: +1 (LONG), -1 (SHORT), 0 (unknown)
-    """
-    status = str(deal.get("status", "")).lower()
+    FIXED 23 Sep 2026: the previous version built one combined string
+    via `a or b or c or d or e` and lowercased it. Since Python's `or`
+    short-circuits on the FIRST truthy value, and currentPosition (a
+    non-zero number for any real open position) is always truthy, that
+    version NEVER reached the actual side/status fields for any real
+    deal - str(12.61).lower() == '12.61', which matches none of the
+    hardcoded words, so every real position silently returned 0
+    ("unknown"). Confirmed with a concrete example before this fix:
+    {"currentPosition": 12.61, "status": "entered"} (a real LONG
+    position) returned 0, not 1. This version checks each field
+    separately, in the priority order described above, so a real
+    position is never silently misread as unknown."""
+    for f in ("side", "direction", "position_side"):
+        v = deal.get(f)
+        if v not in (None, "", 0):
+            s = str(v).lower()
+            if s in ("bought", "buy", "long", "active_long", "1"):
+                return 1
+            if s in ("sold", "sell", "short", "active_short", "-1"):
+                return -1
 
-    # Try explicit side-like fields first
-    for field in ("side", "direction", "position_side"):
-        v = str(deal.get(field, "")).lower()
-        if v in ("bought", "buy", "long", "active_long", "1", "true"):
-            return 1
-        if v in ("sold", "sell", "short", "active_short", "-1"):
-            return -1
-
-    # Fallback: use currentPosition numeric value (positive = LONG)
-    cp = deal.get("currentPosition", None)
+    cp = deal.get("currentPosition")
     if isinstance(cp, (int, float)):
         if cp > 0:
             return 1
         if cp < 0:
             return -1
 
-    # Last fallback: status field
-    if status in ("sold", "sell", "short", "active_short"):
-        return -1
-    if status in ("bought", "buy", "long", "active_long", "entered"):
+    status = str(deal.get("status", "")).lower()
+    if status == "entered":
         return 1
+    if status in ("sold", "short"):
+        return -1
 
     return 0
 
@@ -266,16 +290,22 @@ def main():
     log("INFO", f"3Commas reports {len(actual)} live strategies")
 
     if actual:
-        log("INFO", f"{len(actual)} live strategies. signalBot.name + pair for each:")
-        for i, d in enumerate(actual[:50]):
-            sig = d.get("signalBot") or {}
-            name = sig.get("name", "?") if isinstance(sig, dict) else "?"
-            pair = d.get("pair", "?")
-            status = d.get("status", "?")
-            cp = d.get("currentPosition", "?")
-            log("INFO", f"  [{i}] signalBot.name={name!r}  pair={pair!r}  "
-                f"status={status!r}  currentPosition={cp!r}")
+        names = sorted({(d.get('name', d.get('bot_name', '?')),
+                        d.get('pair', d.get('market', '?')))
+                       for d in actual[:50]})
+        log("INFO", f"distinct (name, pair) seen: {names}")
+        log("INFO", f"first item keys: {sorted(actual[0].keys())}")
         log("INFO", f"first item sample: {json.dumps(actual[0], default=str)[:300]}")
+        # Show nested structures - top-level name is missing in v2, bot
+        # info is inside signalBot or profileStrategies dicts.
+        first = actual[0]
+        for nested_field in ("signalBot", "profileStrategies"):
+            nested = first.get(nested_field)
+            if isinstance(nested, dict):
+                log("INFO", f"first.{nested_field} keys: {sorted(nested.keys())}")
+                log("INFO", f"first.{nested_field} content: {json.dumps(nested, default=str)[:400]}")
+            elif nested is not None:
+                log("INFO", f"first.{nested_field} value: {nested!r}")
 
     actual_by_key = {key: [] for key in BOT_CONFIG}
     unmatched = []
@@ -321,16 +351,27 @@ def main():
             actual_pos = 0
 
         if believed_pos == 0 and actual_count > 0:
-            side_str = {1: "LONG", -1: "SHORT", 0: "unknown"}.get(actual_pos, "?")
+            side_str = {1: "LONG", -1: "SHORT"}.get(actual_pos, "?")
             mismatches.append((key, f"bot flat but 3Commas has {side_str} "
-                                    f"position ({actual_count} deal(s))", actual_for_key))
+                                    f"({actual_count} deal(s))", actual_for_key))
         elif believed_pos != 0 and actual_count == 0:
             side_str = "LONG" if believed_pos == 1 else "SHORT"
             mismatches.append((key, f"bot believes {side_str} but 3Commas "
                                     f"has no position", []))
         elif believed_pos != 0 and actual_count > 0:
             if actual_pos == 0:
-                log("WARN", f"  {key}: bot believes LONG/SHORT but 3Commas direction unknown")
+                # FIXED 23 Sep 2026: a genuinely UNKNOWN direction (none of
+                # the deal's fields could be read, distinct from a real
+                # opposite-direction conflict) was previously treated as a
+                # FAIL-level mismatch, contradicting this project's own
+                # stated design ("don't call 0-direction a mismatch, would
+                # create noise every reconcile - treat as WARN not FAIL")
+                # which was documented but never actually implemented here.
+                bot_side = "LONG" if believed_pos == 1 else "SHORT"
+                log("WARN", f"  {key}: bot believes {bot_side}, 3Commas has "
+                    f"{actual_count} deal(s) but direction could not be "
+                    f"determined from any known field - not counted as a "
+                    f"mismatch, but worth a human glance")
                 healthy += 1
             elif actual_pos != believed_pos:
                 bot_side = "LONG" if believed_pos == 1 else "SHORT"
