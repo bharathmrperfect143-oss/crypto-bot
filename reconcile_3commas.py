@@ -210,25 +210,43 @@ def deal_matches_strategy(deal, cfg):
 
 
 def deal_side(deal):
-    """Direction inference, explicit fallback chain (order matters):
-    1. explicit side/direction/position_side text field, if present
-    2. numeric currentPosition sign (this is a POSITION SIZE, e.g.
-       12.61 or 7.98 - not a side word)
-    3. status string ("entered"=long, "sold"/"short"=short)
-    4. unknown (0) - logged as WARN elsewhere, never treated as FAIL
+    """Direction inference - REVISED 23 Sep 2026 after TWO earlier
+    versions both turned out wrong on real data, verified with actual
+    API responses each time (not assumed):
 
-    FIXED 23 Sep 2026: the previous version built one combined string
-    via `a or b or c or d or e` and lowercased it. Since Python's `or`
-    short-circuits on the FIRST truthy value, and currentPosition (a
-    non-zero number for any real open position) is always truthy, that
-    version NEVER reached the actual side/status fields for any real
-    deal - str(12.61).lower() == '12.61', which matches none of the
-    hardcoded words, so every real position silently returned 0
-    ("unknown"). Confirmed with a concrete example before this fix:
-    {"currentPosition": 12.61, "status": "entered"} (a real LONG
-    position) returned 0, not 1. This version checks each field
-    separately, in the priority order described above, so a real
-    position is never silently misread as unknown."""
+    Version 1 bug: built one combined string via `a or b or c or d or e`
+    and lowercased it - Python's `or` short-circuits on the first truthy
+    value, so a non-zero currentPosition always won and the real
+    side/status fields were never reached. Every real position silently
+    returned 0.
+
+    Version 2 bug: checked side/direction/position_side fields first (a
+    reasonable design), then fell back to the SIGN of currentPosition
+    for direction. On real data this was also wrong: comparing 4 known-
+    LONG deals (2 profitable, 2 at a loss, confirmed against the
+    3Commas Positions page UI, not assumed), currentPosition was
+    POSITIVE for the 2 in profit and NEGATIVE for the 2 at a loss -
+    its sign tracks unrealized P&L, not LONG vs SHORT. Using it as a
+    direction signal produced a false "SHORT" read for both losing
+    LONG positions.
+
+    CURRENT VERSION: this project's actual v2 API response shape (the
+    full JSON was inspected directly, not guessed) has NO side,
+    direction, or position_side field, and no other field that reliably
+    encodes LONG vs SHORT could be confirmed - the boolean `type` field
+    was constant (false) across all 4 known-LONG examples available,
+    with no known-SHORT example to compare against, so it cannot be
+    trusted either. Rather than guess a THIRD time, this version only
+    trusts an explicit side/direction/position_side field IF one is
+    ever present (future-proofing, in case a different deal shape does
+    include one) and otherwise honestly returns 0 (unknown) - which the
+    caller treats as a WARN, not a FAIL. This means the tool can still
+    reliably catch "3Commas has no deal at all" (the original, most
+    important failure mode - see PART 29 of the project record) but
+    does NOT claim to verify LONG vs SHORT direction on this API shape
+    until a confirmed-reliable field is found (ideally by comparing a
+    real SHORT deal's raw JSON against a real LONG deal's, side by
+    side)."""
     for f in ("side", "direction", "position_side"):
         v = deal.get(f)
         if v not in (None, "", 0):
@@ -237,20 +255,6 @@ def deal_side(deal):
                 return 1
             if s in ("sold", "sell", "short", "active_short", "-1"):
                 return -1
-
-    cp = deal.get("currentPosition")
-    if isinstance(cp, (int, float)):
-        if cp > 0:
-            return 1
-        if cp < 0:
-            return -1
-
-    status = str(deal.get("status", "")).lower()
-    if status == "entered":
-        return 1
-    if status in ("sold", "short"):
-        return -1
-
     return 0
 
 
