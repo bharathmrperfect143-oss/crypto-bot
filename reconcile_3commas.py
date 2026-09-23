@@ -48,15 +48,20 @@ MAX_RETRIES = 3
 RECV_WINDOW_MS = 60000
 
 # Strategy key -> bot identification
+# Match by signalBot.name substring + pair. v2 bot names look like:
+#   "B-SOL - TwoTF Base"   "B-XRP - TwoTF Base"   <- B baseline (confirmed)
+#   "A-SOL - ..."            (TBD by user)        <- A breakout
+#   "C-SOL - TwoTF Vol"     (TBD)                 <- C vol-targeted
+#   "D-SOL - SingleTF"      (TBD)                 <- D single-timeframe
 BOT_CONFIG = {
-    "A:SOLUSDT": {"name_substr": "DB160",     "bot_id": None, "pair": "USDT_SOL"},
-    "A:XRPUSDT": {"name_substr": "DB160",     "bot_id": None, "pair": "USDT_XRP"},
-    "B:SOLUSDT": {"name_substr": "DB-TEMA",   "bot_id": None, "pair": "USDT_SOL"},
-    "B:XRPUSDT": {"name_substr": "DB-TEMA",   "bot_id": None, "pair": "USDT_XRP"},
-    "C:SOLUSDT": {"name_substr": "DB-STAGE1", "bot_id": None, "pair": "USDT_SOL"},
-    "C:XRPUSDT": {"name_substr": "DB-STAGE1", "bot_id": None, "pair": "USDT_XRP"},
-    "D:SOLUSDT": {"name_substr": "SingleTF",  "bot_id": None, "pair": "USDT_SOL"},
-    "D:XRPUSDT": {"name_substr": "SingleTF",  "bot_id": None, "pair": "USDT_XRP"},
+    "A:SOLUSDT": {"name_substr": "A-SOL",      "bot_id": None, "pair": "USDT_SOL"},
+    "A:XRPUSDT": {"name_substr": "A-XRP",      "bot_id": None, "pair": "USDT_XRP"},
+    "B:SOLUSDT": {"name_substr": "TwoTF Base", "bot_id": None, "pair": "USDT_SOL"},
+    "B:XRPUSDT": {"name_substr": "TwoTF Base", "bot_id": None, "pair": "USDT_XRP"},
+    "C:SOLUSDT": {"name_substr": "C-SOL",      "bot_id": None, "pair": "USDT_SOL"},
+    "C:XRPUSDT": {"name_substr": "C-XRP",      "bot_id": None, "pair": "USDT_XRP"},
+    "D:SOLUSDT": {"name_substr": "SingleTF",   "bot_id": None, "pair": "USDT_SOL"},
+    "D:XRPUSDT": {"name_substr": "SingleTF",   "bot_id": None, "pair": "USDT_XRP"},
 }
 
 D_CONFIRM_N = 8
@@ -143,7 +148,6 @@ def api_get(path):
 
 
 def fetch_active_strategies():
-    """GET /open_api/strategies/live - currently-active strategies."""
     return api_get("/open_api/strategies/live")
 
 
@@ -191,7 +195,6 @@ def deal_matches_strategy(deal, cfg):
 
 
 def deal_side(deal):
-    """v2 status: 'entered'=long, 'sold'/'short'=short."""
     s = str(
         deal.get("currentPosition", "") or
         deal.get("side", "") or
@@ -242,22 +245,17 @@ def main():
     log("INFO", f"3Commas reports {len(actual)} live strategies")
 
     if actual:
-        names = sorted({(d.get('name', d.get('bot_name', '?')),
-                        d.get('pair', d.get('market', '?')))
-                       for d in actual[:50]})
-        log("INFO", f"distinct (name, pair) seen: {names}")
-        log("INFO", f"first item keys: {sorted(actual[0].keys())}")
+        # signalBot.name is the actual bot name in v2 - print for ALL strategies
+        log("INFO", f"{len(actual)} live strategies. signalBot.name + pair for each:")
+        for i, d in enumerate(actual[:50]):
+            sig = d.get("signalBot") or {}
+            name = sig.get("name", "?") if isinstance(sig, dict) else "?"
+            pair = d.get("pair", "?")
+            status = d.get("status", "?")
+            cp = d.get("currentPosition", "?")
+            log("INFO", f"  [{i}] signalBot.name={name!r}  pair={pair!r}  "
+                f"status={status!r}  currentPosition={cp!r}")
         log("INFO", f"first item sample: {json.dumps(actual[0], default=str)[:300]}")
-        # Show nested structures - top-level name is missing in v2, bot
-        # info is inside signalBot or profileStrategies dicts.
-        first = actual[0]
-        for nested_field in ("signalBot", "profileStrategies"):
-            nested = first.get(nested_field)
-            if isinstance(nested, dict):
-                log("INFO", f"first.{nested_field} keys: {sorted(nested.keys())}")
-                log("INFO", f"first.{nested_field} content: {json.dumps(nested, default=str)[:400]}")
-            elif nested is not None:
-                log("INFO", f"first.{nested_field} value: {nested!r}")
 
     actual_by_key = {key: [] for key in BOT_CONFIG}
     unmatched = []
