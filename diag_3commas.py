@@ -3,6 +3,9 @@
 v2 base URL: https://trade.3commas.io (paths under /open_api/...)
 v2 auth: HMAC-SHA256 of METHOD\\nPATH\\nTS\\nRECV\\nBODY, Base64 encoded
         headers: X-API-Key, X-Signature, X-Timestamp, X-Recv-Window
+
+CONFIRMED WORKING: /open_api/api_profiles  (returned real JSON)
+STILL SEARCHING:  the Strategy endpoint path (404 on /open_api/strategies)
 """
 
 import os
@@ -50,9 +53,11 @@ def call(method, path):
     except urllib.error.HTTPError as e:
         body = ""
         try:
-            body = e.read().decode("utf-8", errors="replace")[:300]
+            body = e.read().decode("utf-8", errors="replace")[:200]
         except Exception:
             pass
+        if e.code == 404:
+            return None, f"404 (not found)"
         return False, f"HTTP {e.code}  body={body!r}"
     except urllib.error.URLError as e:
         return False, f"URLError: {e.reason}"
@@ -62,31 +67,43 @@ def call(method, path):
 
 def main():
     print("=" * 70)
-    print("3Commas v2 REST API diagnostic")
+    print("3Commas v2 REST API endpoint discovery")
     print(f"base: {API_BASE}")
     print("=" * 70)
 
     endpoints = [
         ("/open_api/api_profiles?exchanges=BINANCE",
-         "API Profiles - lists exchanges/accounts (per docs GET example)"),
-        ("/open_api/strategies",
-         "Strategy - lists all strategies"),
-        ("/open_api/strategies?state=active",
-         "Strategy - active only"),
-        ("/open_api/strategies?limit=10",
-         "Strategy - first 10"),
+         "API Profiles (CONFIRMED WORKING - sanity check)"),
+        ("/open_api/strategies", "tried, returned 404"),
+        ("/open_api/strategy", "singular variant"),
+        ("/open_api/strategies/list", "list subpath"),
+        ("/open_api/strategies?limit=20", "limit param only"),
+        ("/open_api/bots", "DCA bots endpoint"),
+        ("/open_api/bots?limit=20", "DCA bots with limit"),
+        ("/open_api/signal_bots", "Signal bots"),
+        ("/open_api/smart_trades", "Smart trades"),
+        ("/open_api/positions", "positions"),
+        ("/open_api/positions?state=active", "active positions"),
+        ("/open_api/accounts/positions", "account positions"),
+        ("/open_api/deals", "deals"),
+        ("/open_api/deals?scope=active", "active deals"),
     ]
 
     for path, desc in endpoints:
-        print(f"\n[TEST] {desc}")
-        print(f"  URL: {API_BASE}{path}")
         ok, result = call("GET", path)
-        status = "OK" if ok else "FAIL"
-        print(f"  [{status}] {result}")
+        if ok is True:
+            status = "OK"
+        elif ok is None:
+            status = "404"
+        else:
+            status = "FAIL"
+        print(f"\n[{status}] {path}")
+        print(f"        {desc}")
+        print(f"        {result}")
 
     print("\n" + "=" * 70)
-    print("If any returned JSON (not HTML/error), that's the endpoint to use.")
-    print("If all FAIL with HTML, the docs URL or endpoint paths are wrong.")
+    print("Goal: find an [OK] that returns a list/array of strategies or deals.")
+    print("If all 404, click 'Strategy' in docs sidebar and tell me the endpoint path.")
 
 
 if __name__ == "__main__":
