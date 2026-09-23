@@ -195,17 +195,38 @@ def deal_matches_strategy(deal, cfg):
 
 
 def deal_side(deal):
-    s = str(
-        deal.get("currentPosition", "") or
-        deal.get("side", "") or
-        deal.get("direction", "") or
-        deal.get("position_side", "") or
-        deal.get("status", "")
-    ).lower()
-    if s in ("bought", "buy", "long", "active_long", "entered", "1"):
-        return 1
-    if s in ("sold", "sell", "short", "active_short", "-1"):
+    """Infer LONG/SHORT from v2 strategy fields.
+
+    v2 has no explicit 'side' field. Inference:
+      - 'side'/'direction' field set: use it
+      - else currentPosition numeric > 0 = LONG, < 0 = SHORT
+      - else status='sold' etc = SHORT, 'entered' = LONG
+    Returns: +1 (LONG), -1 (SHORT), 0 (unknown)
+    """
+    status = str(deal.get("status", "")).lower()
+
+    # Try explicit side-like fields first
+    for field in ("side", "direction", "position_side"):
+        v = str(deal.get(field, "")).lower()
+        if v in ("bought", "buy", "long", "active_long", "1", "true"):
+            return 1
+        if v in ("sold", "sell", "short", "active_short", "-1"):
+            return -1
+
+    # Fallback: use currentPosition numeric value (positive = LONG)
+    cp = deal.get("currentPosition", None)
+    if isinstance(cp, (int, float)):
+        if cp > 0:
+            return 1
+        if cp < 0:
+            return -1
+
+    # Last fallback: status field
+    if status in ("sold", "sell", "short", "active_short"):
         return -1
+    if status in ("bought", "buy", "long", "active_long", "entered"):
+        return 1
+
     return 0
 
 
@@ -245,7 +266,6 @@ def main():
     log("INFO", f"3Commas reports {len(actual)} live strategies")
 
     if actual:
-        # signalBot.name is the actual bot name in v2 - print for ALL strategies
         log("INFO", f"{len(actual)} live strategies. signalBot.name + pair for each:")
         for i, d in enumerate(actual[:50]):
             sig = d.get("signalBot") or {}
@@ -301,15 +321,18 @@ def main():
             actual_pos = 0
 
         if believed_pos == 0 and actual_count > 0:
-            side_str = {1: "LONG", -1: "SHORT"}.get(actual_pos, "?")
+            side_str = {1: "LONG", -1: "SHORT", 0: "unknown"}.get(actual_pos, "?")
             mismatches.append((key, f"bot flat but 3Commas has {side_str} "
-                                    f"({actual_count} deal(s))", actual_for_key))
+                                    f"position ({actual_count} deal(s))", actual_for_key))
         elif believed_pos != 0 and actual_count == 0:
             side_str = "LONG" if believed_pos == 1 else "SHORT"
             mismatches.append((key, f"bot believes {side_str} but 3Commas "
                                     f"has no position", []))
         elif believed_pos != 0 and actual_count > 0:
-            if actual_pos != believed_pos:
+            if actual_pos == 0:
+                log("WARN", f"  {key}: bot believes LONG/SHORT but 3Commas direction unknown")
+                healthy += 1
+            elif actual_pos != believed_pos:
                 bot_side = "LONG" if believed_pos == 1 else "SHORT"
                 thc_side = "LONG" if actual_pos == 1 else "SHORT"
                 mismatches.append((key, f"direction mismatch: bot={bot_side}, "
