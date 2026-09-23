@@ -47,6 +47,7 @@ API_TIMEOUT = 30
 MAX_RETRIES = 3
 RECV_WINDOW_MS = 60000
 
+# Strategy key -> bot identification
 BOT_CONFIG = {
     "A:SOLUSDT": {"name_substr": "DB160",     "bot_id": None, "pair": "USDT_SOL"},
     "A:XRPUSDT": {"name_substr": "DB160",     "bot_id": None, "pair": "USDT_XRP"},
@@ -73,6 +74,7 @@ def log(level, msg):
 
 
 def sign_v2(method, path, body, secret):
+    """v2 HMAC: Base64(HMAC_SHA256(secret, payload))"""
     ts = str(int(time.time() * 1000))
     recv = str(RECV_WINDOW_MS)
     payload = f"{method}\n{path}\n{ts}\n{recv}\n{body}"
@@ -141,6 +143,7 @@ def api_get(path):
 
 
 def fetch_active_strategies():
+    """GET /open_api/strategies/live - currently-active strategies."""
     return api_get("/open_api/strategies/live")
 
 
@@ -149,7 +152,6 @@ def normalize_pair(p):
     p = str(p or "").upper().replace("_", "").replace("/", "").replace("-", "")
     if not p:
         return ""
-    # Stablecoins are unambiguous quotes - use them to detect QUOTE_BASE format
     for quote in ("USDT", "USDC", "BUSD", "USD"):
         if p.startswith(quote) and len(p) > len(quote):
             base = p[len(quote):]
@@ -246,6 +248,16 @@ def main():
         log("INFO", f"distinct (name, pair) seen: {names}")
         log("INFO", f"first item keys: {sorted(actual[0].keys())}")
         log("INFO", f"first item sample: {json.dumps(actual[0], default=str)[:300]}")
+        # Show nested structures - top-level name is missing in v2, bot
+        # info is inside signalBot or profileStrategies dicts.
+        first = actual[0]
+        for nested_field in ("signalBot", "profileStrategies"):
+            nested = first.get(nested_field)
+            if isinstance(nested, dict):
+                log("INFO", f"first.{nested_field} keys: {sorted(nested.keys())}")
+                log("INFO", f"first.{nested_field} content: {json.dumps(nested, default=str)[:400]}")
+            elif nested is not None:
+                log("INFO", f"first.{nested_field} value: {nested!r}")
 
     actual_by_key = {key: [] for key in BOT_CONFIG}
     unmatched = []
