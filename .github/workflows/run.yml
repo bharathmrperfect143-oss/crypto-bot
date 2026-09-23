@@ -43,6 +43,20 @@ jobs:
           B_XRP_ENTER_LONG:  ${{ secrets.B_XRP_ENTER_LONG }}
           B_XRP_ENTER_SHORT: ${{ secrets.B_XRP_ENTER_SHORT }}
           B_XRP_EXIT_ALL:    ${{ secrets.B_XRP_EXIT_ALL }}
+          # strategy C - B + Stage 1.1 vol-targeted sizing
+          C_SOL_ENTER_LONG:  ${{ secrets.C_SOL_ENTER_LONG }}
+          C_SOL_ENTER_SHORT: ${{ secrets.C_SOL_ENTER_SHORT }}
+          C_SOL_EXIT_ALL:    ${{ secrets.C_SOL_EXIT_ALL }}
+          C_XRP_ENTER_LONG:  ${{ secrets.C_XRP_ENTER_LONG }}
+          C_XRP_ENTER_SHORT: ${{ secrets.C_XRP_ENTER_SHORT }}
+          C_XRP_EXIT_ALL:    ${{ secrets.C_XRP_EXIT_ALL }}
+          # strategy D - single-timeframe experiment
+          D_SOL_ENTER_LONG:  ${{ secrets.D_SOL_ENTER_LONG }}
+          D_SOL_ENTER_SHORT: ${{ secrets.D_SOL_ENTER_SHORT }}
+          D_SOL_EXIT_ALL:    ${{ secrets.D_SOL_EXIT_ALL }}
+          D_XRP_ENTER_LONG:  ${{ secrets.D_XRP_ENTER_LONG }}
+          D_XRP_ENTER_SHORT: ${{ secrets.D_XRP_ENTER_SHORT }}
+          D_XRP_EXIT_ALL:    ${{ secrets.D_XRP_EXIT_ALL }}
           DRY_RUN:           ${{ github.event.inputs.dry_run }}
         run: python bot.py
 
