@@ -75,3 +75,17 @@ jobs:
               sleep 5
             done
           fi
+
+      - name: Heartbeat (success)
+        if: success()
+        run: |
+          if [ -n "${{ secrets.HEALTHCHECK_PING_URL_BOT }}" ]; then
+            curl -fsS --retry 3 --max-time 10 "${{ secrets.HEALTHCHECK_PING_URL_BOT }}" || true
+          fi
+
+      - name: Heartbeat (failure)
+        if: failure()
+        run: |
+          if [ -n "${{ secrets.HEALTHCHECK_PING_URL_BOT }}" ]; then
+            curl -fsS --retry 3 --max-time 10 "${{ secrets.HEALTHCHECK_PING_URL_BOT }}/fail" || true
+          fi
