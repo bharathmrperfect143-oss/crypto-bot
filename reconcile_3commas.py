@@ -12,6 +12,8 @@ v2 auth (per https://trade.3commas.io/docs/rest-api/auth):
   signature = Base64(HMAC_SHA256(secret, payload))
   headers: X-API-Key, X-Signature, X-Timestamp, X-Recv-Window
 
+Live strategies endpoint: GET /open_api/strategies/live
+
 Required env vars:
   THREECOMMAS_API_KEY     - from 3Commas account API settings
   THREECOMMAS_API_SECRET  - keep secret
@@ -33,7 +35,6 @@ import os
 import sys
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 from datetime import datetime, timezone, timedelta
 
@@ -111,8 +112,7 @@ def api_get(path):
                 body_text = raw.decode("utf-8", errors="replace")
                 if not body_text.strip():
                     raise RuntimeError(
-                        f"empty response body from {url} "
-                        f"(HTTP {r.status})")
+                        f"empty response body from {url} (HTTP {r.status})")
                 try:
                     return json.loads(body_text)
                 except json.JSONDecodeError as je:
@@ -143,31 +143,50 @@ def api_get(path):
 
 
 def fetch_active_strategies():
-    """GET /open_api/strategies - list all strategies."""
-    return api_get("/open_api/strategies")
+    """GET /open_api/strategies/live - currently-active strategies."""
+    return api_get("/open_api/strategies/live")
 
 
 def deal_matches_strategy(deal, cfg):
     if cfg.get("bot_id"):
-        return deal.get("bot_id") == cfg["bot_id"]
+        return deal.get("id") == cfg["bot_id"] or deal.get("bot_id") == cfg["bot_id"]
     substr = cfg.get("name_substr", "").lower()
     pair = cfg.get("pair", "")
     if not substr or not pair:
         return False
-    bot_name = str(deal.get("bot_name", "") or
-                   deal.get("name", "") or
-                   deal.get("strategy_name", "")).lower()
-    deal_pair = deal.get("pair", "")
+    bot_name = str(
+        deal.get("name", "") or
+        deal.get("bot_name", "") or
+        deal.get("strategy_name", "") or
+        ""
+    ).lower()
+    deal_pair = str(deal.get("pair", "") or deal.get("market", ""))
     return substr in bot_name and deal_pair == pair
 
 
 def deal_side(deal):
-    s = str(deal.get("status", "")).lower()
-    if s in ("bought", "buy", "long", "active_long"):
+    s = str(
+        deal.get("side", "") or
+        deal.get("direction", "") or
+        deal.get("position_side", "") or
+        deal.get("status", "")
+    ).lower()
+    if s in ("bought", "buy", "long", "active_long", "1"):
         return 1
-    if s in ("sold", "sell", "short", "active_short"):
+    if s in ("sold", "sell", "short", "active_short", "-1"):
         return -1
     return 0
+
+
+def extract_items(response):
+    if isinstance(response, list):
+        return response
+    if isinstance(response, dict):
+        for key in ("items", "data", "result", "strategies", "results"):
+            if key in response and isinstance(response[key], list):
+                return response[key]
+        return []
+    return []
 
 
 def main():
@@ -187,19 +206,20 @@ def main():
         log("ERROR", f"could not query 3Commas: {e}")
         return 3
 
-    if isinstance(actual, dict):
-        actual = actual.get("data", actual.get("result", [actual]))
+    actual = extract_items(actual)
     if not isinstance(actual, list):
         log("ERROR", f"unexpected response shape: {type(actual).__name__}: "
             f"{str(actual)[:200]}")
         return 3
-    log("INFO", f"3Commas reports {len(actual)} items")
+    log("INFO", f"3Commas reports {len(actual)} live strategies")
 
     if actual:
-        names = sorted({(d.get('bot_name', d.get('name', '?')),
-                        d.get('pair', '?')) for d in actual[:50]})
+        names = sorted({(d.get('name', d.get('bot_name', '?')),
+                        d.get('pair', d.get('market', '?')))
+                       for d in actual[:50]})
         log("INFO", f"distinct (name, pair) seen: {names}")
         log("INFO", f"first item keys: {sorted(actual[0].keys())}")
+        log("INFO", f"first item sample: {json.dumps(actual[0], default=str)[:300]}")
 
     actual_by_key = {key: [] for key in BOT_CONFIG}
     unmatched = []
@@ -213,11 +233,11 @@ def main():
             unmatched.append(d)
 
     if unmatched:
-        log("WARN", f"{len(unmatched)} item(s) did not match any strategy:")
+        log("WARN", f"{len(unmatched)} strategy(ies) did not match any in BOT_CONFIG:")
         for d in unmatched[:5]:
             log("WARN", f"  keys={sorted(d.keys())}  "
-                f"name={d.get('bot_name', d.get('name', '?'))!r}  "
-                f"pair={d.get('pair', '?')!r}  status={d.get('status', '?')!r}")
+                f"name={d.get('name', d.get('bot_name', '?'))!r}  "
+                f"pair={d.get('pair', d.get('market', '?'))!r}")
 
     mismatches = []
     silent_stucks = []
@@ -284,8 +304,9 @@ def main():
         for key, why, trades in mismatches:
             log("FAIL", f"  {key}: {why}")
             for t in trades[:3]:
-                log("FAIL", f"      name={t.get('bot_name', t.get('name', '?'))!r}  "
-                    f"pair={t.get('pair', '?')!r}  status={t.get('status', '?')!r}")
+                log("FAIL", f"      name={t.get('name', t.get('bot_name', '?'))!r}  "
+                    f"pair={t.get('pair', t.get('market', '?'))!r}  "
+                    f"status={t.get('status', '?')!r}")
         return 1
 
     if silent_stucks:
