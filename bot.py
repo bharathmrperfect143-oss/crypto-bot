@@ -72,6 +72,9 @@ DO NOT change the parameters during the forward test, except as part of
 a deliberately isolated experiment.
 """
 
+import base64
+import hashlib
+import hmac
 import json
 import math
 import os
@@ -111,6 +114,142 @@ VOL_LMAX         = 1.0    # cap: never size above 1.0x the base amount
 
 
 WEBHOOK = "https://3c.wtalerts.com/bot/other"
+
+# ---- ENTRY VERIFICATION (added after a real silent-loss incident: a
+# webhook got HTTP 200 from wtalerts.com but 3Commas rejected the order
+# downstream - the bot believed it held a position that never actually
+# existed, and stayed stuck since streak_fired/prev_agree had already
+# been marked consumed). This re-uses the SAME v2 auth scheme and the
+# SAME bot-name-matching approach already built and verified in
+# reconcile_3commas.py, on purpose, rather than inventing a second
+# implementation of the same thing.
+#
+# HONEST SCOPE: this only checks WHETHER 3Commas shows an open deal for
+# the strategy/symbol - it does NOT check LONG vs SHORT direction.
+# reconcile_3commas.py's own project record shows direction cannot
+# currently be reliably read from this API response shape (a numeric
+# field that looked like a direction indicator turned out to track
+# unrealized P&L instead). Checking existence only is still the exact
+# protection this incident needed - the failure was "believed a deal
+# existed when it did not," not "believed the wrong direction."
+THREECOMMAS_API_KEY    = os.environ.get("THREECOMMAS_API_KEY", "")
+THREECOMMAS_API_SECRET = os.environ.get("THREECOMMAS_API_SECRET", "")
+THREECOMMAS_API_BASE   = "https://trade.3commas.io"
+THREECOMMAS_RECV_MS    = 60000
+
+# strategy+symbol -> the bot-name prefix confirmed against the live
+# 3Commas dashboard (see the project record) - kept identical to
+# reconcile_3commas.py's BOT_CONFIG substrings on purpose.
+_BOT_NAME_PREFIX = {
+    ("A", "SOLUSDT"): "A-SOL", ("A", "XRPUSDT"): "A-XRP",
+    ("B", "SOLUSDT"): "B-SOL", ("B", "XRPUSDT"): "B-XRP",
+    ("C", "SOLUSDT"): "C-SOL", ("C", "XRPUSDT"): "C-XRP",
+    ("D", "SOLUSDT"): "D-SOL", ("D", "XRPUSDT"): "D-XRP",
+}
+
+_verify_warned_no_creds = False
+
+
+def _v2_sign(method, path, body, secret):
+    ts = str(int(time.time() * 1000))
+    payload = f"{method}\n{path}\n{ts}\n{THREECOMMAS_RECV_MS}\n{body}"
+    sig = base64.b64encode(
+        hmac.new(secret.encode(), payload.encode(), hashlib.sha256).digest()
+    ).decode()
+    return sig, ts
+
+
+def _fetch_live_deals():
+    """GET /open_api/strategies/live - returns the raw list, or None on
+    any error (network, auth, parse). Never raises - a verification
+    check that itself fails should not crash the whole bot run."""
+    path = "/open_api/strategies/live"
+    sig, ts = _v2_sign("GET", path, "", THREECOMMAS_API_SECRET)
+    req = urllib.request.Request(
+        THREECOMMAS_API_BASE + path,
+        headers={
+            "X-API-Key": THREECOMMAS_API_KEY,
+            "X-Signature": sig,
+            "X-Timestamp": ts,
+            "X-Recv-Window": str(THREECOMMAS_RECV_MS),
+            "User-Agent": "renko-bot-verify",
+        },
+        method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode())
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            for k in ("items", "data", "result", "strategies", "results"):
+                if isinstance(data.get(k), list):
+                    return data[k]
+        return None
+    except Exception as e:
+        log(f"  verify: could not query 3Commas ({type(e).__name__}: {e})")
+        return None
+
+
+def verify_entry_accepted(strategy, symbol, tries=3, wait_s=6):
+    """Poll 3Commas a few times (order processing is not instant) to
+    confirm a deal now actually exists for this strategy/symbol, after
+    send_signal() already returned True. Returns True if confirmed, or
+    if verification cannot be performed at all (missing API
+    credentials) - see the module-level comment above for why this
+    fails open rather than blocking every entry when the operator
+    simply hasn't set the two API secrets yet. Returns False only when
+    a real check ran and genuinely found no matching deal."""
+    global _verify_warned_no_creds
+    if not THREECOMMAS_API_KEY or not THREECOMMAS_API_SECRET:
+        if not _verify_warned_no_creds:
+            log("  verify: THREECOMMAS_API_KEY/SECRET not set - entry "
+                "verification is DISABLED, trusting webhook http status "
+                "only (this was the exact gap that caused the original "
+                "incident)")
+            _verify_warned_no_creds = True
+        return True
+
+    prefix = _BOT_NAME_PREFIX.get((strategy, symbol))
+    if not prefix:
+        return True  # unknown combo, nothing to check against
+
+    # IMPORTANT: a query that could not even be COMPLETED (network error,
+    # 3Commas API temporarily unreachable, etc. - _fetch_live_deals()
+    # returns None for these) is NOT the same as a query that completed
+    # and genuinely found no matching deal. Only the second case should
+    # ever reject the entry - rejecting on the first case would risk a
+    # DUPLICATE order on the next retry if the original webhook had
+    # actually succeeded and only the verification check itself failed
+    # to reach 3Commas. If every attempt errors out, this fails open
+    # (trusts the webhook), matching the missing-credentials behaviour
+    # above.
+    any_successful_query = False
+    for attempt in range(tries):
+        deals = _fetch_live_deals()
+        if deals is not None:
+            any_successful_query = True
+            for d in deals:
+                name = ""
+                sig_bot = d.get("signalBot")
+                if isinstance(sig_bot, dict):
+                    name = str(sig_bot.get("name", ""))
+                pair = str(d.get("pair", "") or "").upper()
+                if prefix.lower() in name.lower() and pair == symbol:
+                    return True
+        if attempt < tries - 1:
+            time.sleep(wait_s)
+
+    if not any_successful_query:
+        log(f"  verify: {strategy}/{symbol} - could not reach 3Commas in "
+            f"{tries} attempts (network/API error, not a real rejection) "
+            f"- trusting the webhook result instead of blocking the entry")
+        return True
+
+    log(f"  verify: {strategy}/{symbol} - webhook returned OK but no "
+        f"matching deal found on 3Commas after {tries} checks - "
+        f"treating the entry as NOT confirmed")
+    return False
+
 
 MARKETS = {
     "A": {
@@ -447,12 +586,14 @@ def run_strategy_a(symbol, names, st, new_closes, price):
             if brick >= hi:
                 log(f"{tag}: LONG entry - {brick:.4f} >= "
                     f"{A_BREAKOUT_N}-brick high {hi:.4f}")
-                if send_signal("A", symbol, enter_long, f"{tag} ENTER-LONG"):
+                if (send_signal("A", symbol, enter_long, f"{tag} ENTER-LONG")
+                        and verify_entry_accepted("A", symbol)):
                     st.update(position=1, best=brick, trades=st["trades"] + 1)
             elif brick <= lo:
                 log(f"{tag}: SHORT entry - {brick:.4f} <= "
                     f"{A_BREAKOUT_N}-brick low {lo:.4f}")
-                if send_signal("A", symbol, enter_short, f"{tag} ENTER-SHORT"):
+                if (send_signal("A", symbol, enter_short, f"{tag} ENTER-SHORT")
+                        and verify_entry_accepted("A", symbol)):
                     st.update(position=-1, best=brick, trades=st["trades"] + 1)
 
     bricks = st["bricks"]
@@ -540,14 +681,16 @@ def run_strategy_c(symbol, names, st, new_closes, price):
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
                     f"-> size {amount} USDT")
-                if send_signal("C", symbol, enter_long, f"{tag} ENTER-LONG", amount):
+                if (send_signal("C", symbol, enter_long, f"{tag} ENTER-LONG", amount)
+                        and verify_entry_accepted("C", symbol)):
                     st.update(position=1, best=latest, trades=st["trades"] + 1)
                     st["prev_agree"] = agree
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
                     f"-> size {amount} USDT")
-                if send_signal("C", symbol, enter_short, f"{tag} ENTER-SHORT", amount):
+                if (send_signal("C", symbol, enter_short, f"{tag} ENTER-SHORT", amount)
+                        and verify_entry_accepted("C", symbol)):
                     st.update(position=-1, best=latest, trades=st["trades"] + 1)
                     st["prev_agree"] = agree
             # On failure: leave prev_agree untouched so the next brick retries.
@@ -633,13 +776,15 @@ def run_strategy_b(symbol, names, st, new_closes, price):
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}")
-                if send_signal("B", symbol, enter_long, f"{tag} ENTER-LONG"):
+                if (send_signal("B", symbol, enter_long, f"{tag} ENTER-LONG")
+                        and verify_entry_accepted("B", symbol)):
                     st.update(position=1, best=latest, trades=st["trades"] + 1)
                     st["prev_agree"] = agree
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}")
-                if send_signal("B", symbol, enter_short, f"{tag} ENTER-SHORT"):
+                if (send_signal("B", symbol, enter_short, f"{tag} ENTER-SHORT")
+                        and verify_entry_accepted("B", symbol)):
                     st.update(position=-1, best=latest, trades=st["trades"] + 1)
                     st["prev_agree"] = agree
             # On failure: leave prev_agree untouched so the next brick can retry.
@@ -724,7 +869,8 @@ def run_strategy_d(symbol, names, st, new_closes, price):
             label = f"{tag} ENTER-{side}"
             log(f"{tag}: {side} entry (confirmed {D_CONFIRM_N} bricks), "
                 f"brick {latest:.4f}, flipping from position {pos:+d}")
-            if send_signal("D", symbol, code, label):
+            if (send_signal("D", symbol, code, label)
+                    and verify_entry_accepted("D", symbol)):
                 st.update(position=d, trades=st["trades"] + 1)
                 st["streak_fired"] = True
             # On failure: leave streak_fired False so the next brick retries.
