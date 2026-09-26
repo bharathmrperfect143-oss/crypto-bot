@@ -15156,3 +15156,13 @@
 2026-09-27 00:24:25 IST  D/SOLUSDT: 15 min, hour not complete yet, price 121.0500
 2026-09-27 00:24:26 IST  D/XRPUSDT: 15 min, hour not complete yet, price 1.5222
 2026-09-27 00:24:26 IST  done
+2026-09-27 00:40:15 IST  ============================================================
+2026-09-27 00:40:16 IST  A/SOLUSDT: flat. brick 120.9706  channel 62.1468 .. 145.7716
+2026-09-27 00:40:17 IST  A/XRPUSDT: flat. brick 1.5729  channel 1.0000 .. 2.0531
+2026-09-27 00:40:18 IST  B/SOLUSDT: holding LONG. fast +1  slow +1  brick 120.5706  trades 1
+2026-09-27 00:40:19 IST  B/XRPUSDT: holding LONG. fast +1  slow +1  brick 1.5769  trades 2
+2026-09-27 00:40:19 IST  C/SOLUSDT: flat. fast +1  slow +1  brick 120.5706  trades 0
+2026-09-27 00:40:20 IST  C/XRPUSDT: flat. fast +1  slow +1  brick 1.5769  trades 0
+2026-09-27 00:40:21 IST  D/SOLUSDT: holding LONG. dir +1  brick 121.7294  trades 1  streak 18/8
+2026-09-27 00:40:21 IST  D/XRPUSDT: holding SHORT. dir -1  brick 1.5256  trades 4  streak 10/8
+2026-09-27 00:40:21 IST  done
