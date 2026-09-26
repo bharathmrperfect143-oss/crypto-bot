@@ -57,6 +57,12 @@ jobs:
           D_XRP_ENTER_LONG:  ${{ secrets.D_XRP_ENTER_LONG }}
           D_XRP_ENTER_SHORT: ${{ secrets.D_XRP_ENTER_SHORT }}
           D_XRP_EXIT_ALL:    ${{ secrets.D_XRP_EXIT_ALL }}
+          # 3Commas v2 API - used only to VERIFY an entry actually landed
+          # after a webhook returns http 200 (see bot.py's
+          # verify_entry_accepted()). Same credentials reconcile_3commas.py
+          # already uses.
+          THREECOMMAS_API_KEY:    ${{ secrets.THREECOMMAS_API_KEY }}
+          THREECOMMAS_API_SECRET: ${{ secrets.THREECOMMAS_API_SECRET }}
           DRY_RUN:           ${{ github.event.inputs.dry_run }}
         run: python bot.py
 
