@@ -484,12 +484,12 @@
     ],
     "anchor": 4.768905639409396,
     "direction": -1,
-    "last_ms": 1790617620000,
+    "last_ms": 1790618400000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "hour_bucket": 497393,
-    "hour_close": 119.73
+    "hour_bucket": 497394,
+    "hour_close": 119.6
   },
   "A:XRPUSDT": {
     "bricks": [
@@ -976,12 +976,12 @@
     ],
     "anchor": 0.39962896419631777,
     "direction": -1,
-    "last_ms": 1790617620000,
+    "last_ms": 1790618400000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "hour_bucket": 497393,
-    "hour_close": 1.5056
+    "hour_bucket": 497394,
+    "hour_close": 1.505
   },
   "B:SOLUSDT": {
     "f_bricks": [
@@ -1162,13 +1162,13 @@
     "f_direction": -1,
     "s_anchor": 4.806878239155547,
     "s_direction": 1,
-    "last_ms": 1790617620000,
+    "last_ms": 1790618400000,
     "position": 1,
     "best": 122.98205285418503,
     "trades": 1,
     "prev_agree": 1,
-    "hour_bucket": 497393,
-    "hour_close": 119.72
+    "hour_bucket": 497394,
+    "hour_close": 119.59
   },
   "B:XRPUSDT": {
     "f_bricks": [
@@ -1349,13 +1349,13 @@
     "f_direction": -1,
     "s_anchor": 0.45064483492083307,
     "s_direction": 1,
-    "last_ms": 1790617620000,
+    "last_ms": 1790618400000,
     "position": 1,
     "best": 1.6084372494752237,
     "trades": 2,
     "prev_agree": 1,
-    "hour_bucket": 497393,
-    "hour_close": 1.5056
+    "hour_bucket": 497394,
+    "hour_close": 1.505
   },
   "C:SOLUSDT": {
     "f_bricks": [
@@ -1536,15 +1536,14 @@
     "f_direction": -1,
     "s_anchor": 4.806878239155547,
     "s_direction": 1,
-    "last_ms": 1790617620000,
+    "last_ms": 1790618400000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 1,
-    "hour_bucket": 497393,
-    "hour_close": 119.72,
+    "hour_bucket": 497394,
+    "hour_close": 119.59,
     "price_history": [
-      104.87,
       105.13,
       105.35,
       105.23,
@@ -2263,7 +2262,8 @@
       119.84,
       118.07,
       118.71,
-      119.28
+      119.28,
+      119.74
     ]
   },
   "C:XRPUSDT": {
@@ -2445,15 +2445,14 @@
     "f_direction": -1,
     "s_anchor": 0.45064483492083307,
     "s_direction": 1,
-    "last_ms": 1790617620000,
+    "last_ms": 1790618400000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 1,
-    "hour_bucket": 497393,
-    "hour_close": 1.5056,
+    "hour_bucket": 497394,
+    "hour_close": 1.5051,
     "price_history": [
-      1.3924,
       1.3942,
       1.3978,
       1.3976,
@@ -3172,12 +3171,12 @@
       1.5211,
       1.4857,
       1.4948,
-      1.4999
+      1.4999,
+      1.5072
     ]
   },
   "D:SOLUSDT": {
     "bricks": [
-      101.09688736524612,
       100.493024779347,
       98.99910156682743,
       100.19244743703584,
@@ -3306,22 +3305,22 @@
       118.49151016113257,
       119.91981963129572,
       118.13709886453887,
-      119.20352564569073
+      119.20352564569073,
+      119.56113622262777
     ],
-    "anchor": 4.780832331758361,
+    "anchor": 4.78382784073816,
     "direction": 1,
-    "last_ms": 1790617620000,
+    "last_ms": 1790618400000,
     "position": -1,
     "trades": 2,
     "streak_dir": -1,
-    "streak_len": 8,
-    "hour_bucket": 497393,
-    "hour_close": 119.72,
+    "streak_len": 9,
+    "hour_bucket": 497394,
+    "hour_close": 119.6,
     "streak_fired": true
   },
   "D:XRPUSDT": {
     "bricks": [
-      1.301613684182667,
       1.2938390055980287,
       1.2899690983031193,
       1.2977205226148227,
@@ -3450,16 +3449,17 @@
       1.489443699665065,
       1.5210049339717453,
       1.489443699665065,
-      1.4983937668563523
+      1.4983937668563523,
+      1.5028889481569214
     ],
-    "anchor": 0.4043937122728003,
+    "anchor": 0.4073892212525988,
     "direction": 1,
-    "last_ms": 1790617620000,
+    "last_ms": 1790618400000,
     "position": -1,
     "trades": 4,
     "streak_dir": -1,
-    "streak_len": 34,
-    "hour_bucket": 497393,
+    "streak_len": 35,
+    "hour_bucket": 497394,
     "hour_close": 1.5056,
     "streak_fired": true
   }
