@@ -83,6 +83,11 @@ import sys
 import time
 import urllib.request
 import urllib.error
+
+# journal integration (M3, 2026-09-28) - see journal.py. Every signal
+# attempt is recorded with full context; the collector later backfills
+# realized P/L from the 3Commas closed-deals API.
+from journal import append_signal, update_signal, fetch_market_context
 from datetime import datetime, timezone, timedelta
 
 # ---------------------------------------------------------------- config
@@ -380,6 +385,90 @@ def send_signal(strategy, symbol, code, label, amount=None):
     return False
 
 
+# ---- journal bridge -----------------------------------------------------
+# Wraps send_signal() and records every attempt to trades_journal.csv with
+# the indicator context that produced it. Replaces the previous pattern of
+# `send_signal(...) and verify_entry_accepted(...)` written inline at each
+# call site, so the journal write and the 3Commas verification can never
+# drift out of sync with each other.
+#
+# `action` is an EXPLICIT argument, never parsed out of `label` by string
+# splitting. This project has now been bitten twice by deriving a value
+# from a formatted string (bot-name substring matching, and label parsing
+# itself) - a kwarg costs nothing at the call site and removes that whole
+# class of silent-failure bug.
+#
+# `verify=True` is used for ENTRY signals only, matching the scope
+# verify_entry_accepted() already had: entry verification protects against
+# the "believed a deal existed when it did not" incident. Exit signals are
+# journaled but not verified - exits are not what caused that incident, and
+# widening the verification scope is a separate decision, not a side effect
+# of adding journaling.
+#
+# In DRY_RUN the journal is deliberately NOT written, so dry runs cannot
+# pollute the real forward-test record with signals that were never sent.
+_MKT_CTX = {}
+
+
+def send_journal(strategy, symbol, code, label, action, amount=None,
+                 verify=False, brick_value=None, fast_dir="", slow_dir="",
+                 d_dir="", vol_pct=""):
+    """send_signal() + journal record (+ optional 3Commas verification).
+
+    Returns True only if the whole chain succeeded. The caller can keep
+    using this exactly where it previously used `send_signal(...)`, so
+    state.json updates still only happen on genuine success.
+    """
+    if not action:
+        log(f"  !! send_journal called with empty action for {label}")
+        return False
+
+    sent = send_signal(strategy, symbol, code, label, amount)
+    if not sent:
+        return False
+    if DRY_RUN:
+        return True
+
+    # market context is cached per (symbol, 5-min bucket) inside
+    # journal.py, so repeat calls in one run do not re-hit Binance
+    try:
+        ctx = fetch_market_context(symbol)
+    except Exception as e:
+        log(f"  journal: market context unavailable ({e})")
+        ctx = None
+
+    sid = None
+    try:
+        sid = append_signal(
+            strategy, symbol, action, brick_value, fast_dir=fast_dir,
+            slow_dir=slow_dir, d_dir=d_dir, vol_pct=vol_pct,
+            amount_usdt=amount if amount is not None else "",
+            wtalerts_status="ok", context=ctx)
+    except Exception as e:
+        # A journal failure must never block a real trade
+        log(f"  journal: append failed ({e}) - trade unaffected")
+
+    if not verify:
+        if sid:
+            try:
+                update_signal(sid, status="sent", notes="exit signal, not verified")
+            except Exception:
+                pass
+        return True
+
+    accepted = verify_entry_accepted(strategy, symbol)
+    if sid:
+        try:
+            if accepted:
+                update_signal(sid, status="confirmed")
+            else:
+                update_signal(sid, status="rejected",
+                              notes="3commas no matching deal after verify")
+        except Exception:
+            pass
+    return accepted
+
+
 def klines(symbol, start_ms=None, limit=1000):
     url = ("https://data-api.binance.vision/api/v3/klines"
            f"?symbol={symbol}&interval=1m&limit={limit}")
@@ -571,14 +660,16 @@ def run_strategy_a(symbol, names, st, new_closes, price):
             st["best"] = max(st["best"], brick)
             if brick <= st["best"] * (1 - r):
                 log(f"{tag}: LONG exit - {brick:.4f} <= {st['best']*(1-r):.4f}")
-                if send_signal("A", symbol, exit_all, f"{tag} EXIT-ALL"):
+                if send_journal("A", symbol, exit_all, f"{tag} EXIT-ALL",
+                                action="EXIT_ALL", brick_value=brick):
                     st.update(position=0, best=0.0)
                     pos = 0
         elif pos == -1:
             st["best"] = min(st["best"], brick)
             if brick >= st["best"] * (1 + r):
                 log(f"{tag}: SHORT exit - {brick:.4f} >= {st['best']*(1+r):.4f}")
-                if send_signal("A", symbol, exit_all, f"{tag} EXIT-ALL"):
+                if send_journal("A", symbol, exit_all, f"{tag} EXIT-ALL",
+                                action="EXIT_ALL", brick_value=brick):
                     st.update(position=0, best=0.0)
                     pos = 0
 
@@ -586,14 +677,16 @@ def run_strategy_a(symbol, names, st, new_closes, price):
             if brick >= hi:
                 log(f"{tag}: LONG entry - {brick:.4f} >= "
                     f"{A_BREAKOUT_N}-brick high {hi:.4f}")
-                if (send_signal("A", symbol, enter_long, f"{tag} ENTER-LONG")
-                        and verify_entry_accepted("A", symbol)):
+                if send_journal("A", symbol, enter_long, f"{tag} ENTER-LONG",
+                                action="ENTER_LONG", verify=True,
+                                brick_value=brick):
                     st.update(position=1, best=brick, trades=st["trades"] + 1)
             elif brick <= lo:
                 log(f"{tag}: SHORT entry - {brick:.4f} <= "
                     f"{A_BREAKOUT_N}-brick low {lo:.4f}")
-                if (send_signal("A", symbol, enter_short, f"{tag} ENTER-SHORT")
-                        and verify_entry_accepted("A", symbol)):
+                if send_journal("A", symbol, enter_short, f"{tag} ENTER-SHORT",
+                                action="ENTER_SHORT", verify=True,
+                                brick_value=brick):
                     st.update(position=-1, best=brick, trades=st["trades"] + 1)
 
     bricks = st["bricks"]
@@ -662,7 +755,9 @@ def run_strategy_c(symbol, names, st, new_closes, price):
                 side = "LONG" if pos == 1 else "SHORT"
                 log(f"{tag}: {side} exit - {why}, brick {latest:.4f}, "
                     f"best {st['best']:.4f}")
-                if send_signal("C", symbol, exit_all, f"{tag} EXIT-ALL"):
+                if send_journal("C", symbol, exit_all, f"{tag} EXIT-ALL",
+                                action="EXIT_ALL", brick_value=latest,
+                                fast_dir=fast_dir, slow_dir=slow_dir):
                     st.update(position=0, best=0.0)
                     pos = 0
 
@@ -681,16 +776,20 @@ def run_strategy_c(symbol, names, st, new_closes, price):
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
                     f"-> size {amount} USDT")
-                if (send_signal("C", symbol, enter_long, f"{tag} ENTER-LONG", amount)
-                        and verify_entry_accepted("C", symbol)):
+                if send_journal("C", symbol, enter_long, f"{tag} ENTER-LONG",
+                                action="ENTER_LONG", amount=amount, verify=True,
+                                brick_value=latest, fast_dir=fast_dir,
+                                slow_dir=slow_dir, vol_pct=rvol_pct):
                     st.update(position=1, best=latest, trades=st["trades"] + 1)
                     st["prev_agree"] = agree
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
                     f"-> size {amount} USDT")
-                if (send_signal("C", symbol, enter_short, f"{tag} ENTER-SHORT", amount)
-                        and verify_entry_accepted("C", symbol)):
+                if send_journal("C", symbol, enter_short, f"{tag} ENTER-SHORT",
+                                action="ENTER_SHORT", amount=amount, verify=True,
+                                brick_value=latest, fast_dir=fast_dir,
+                                slow_dir=slow_dir, vol_pct=rvol_pct):
                     st.update(position=-1, best=latest, trades=st["trades"] + 1)
                     st["prev_agree"] = agree
             # On failure: leave prev_agree untouched so the next brick retries.
@@ -762,7 +861,9 @@ def run_strategy_b(symbol, names, st, new_closes, price):
                 side = "LONG" if pos == 1 else "SHORT"
                 log(f"{tag}: {side} exit - {why}, brick {latest:.4f}, "
                     f"best {st['best']:.4f}")
-                if send_signal("B", symbol, exit_all, f"{tag} EXIT-ALL"):
+                if send_journal("B", symbol, exit_all, f"{tag} EXIT-ALL",
+                                action="EXIT_ALL", brick_value=latest,
+                                fast_dir=fast_dir, slow_dir=slow_dir):
                     st.update(position=0, best=0.0)
                     pos = 0
 
@@ -776,15 +877,19 @@ def run_strategy_b(symbol, names, st, new_closes, price):
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}")
-                if (send_signal("B", symbol, enter_long, f"{tag} ENTER-LONG")
-                        and verify_entry_accepted("B", symbol)):
+                if send_journal("B", symbol, enter_long, f"{tag} ENTER-LONG",
+                                action="ENTER_LONG", verify=True,
+                                brick_value=latest, fast_dir=fast_dir,
+                                slow_dir=slow_dir):
                     st.update(position=1, best=latest, trades=st["trades"] + 1)
                     st["prev_agree"] = agree
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}")
-                if (send_signal("B", symbol, enter_short, f"{tag} ENTER-SHORT")
-                        and verify_entry_accepted("B", symbol)):
+                if send_journal("B", symbol, enter_short, f"{tag} ENTER-SHORT",
+                                action="ENTER_SHORT", verify=True,
+                                brick_value=latest, fast_dir=fast_dir,
+                                slow_dir=slow_dir):
                     st.update(position=-1, best=latest, trades=st["trades"] + 1)
                     st["prev_agree"] = agree
             # On failure: leave prev_agree untouched so the next brick can retry.
@@ -869,8 +974,9 @@ def run_strategy_d(symbol, names, st, new_closes, price):
             label = f"{tag} ENTER-{side}"
             log(f"{tag}: {side} entry (confirmed {D_CONFIRM_N} bricks), "
                 f"brick {latest:.4f}, flipping from position {pos:+d}")
-            if (send_signal("D", symbol, code, label)
-                    and verify_entry_accepted("D", symbol)):
+            if send_journal("D", symbol, code, label,
+                            action=f"ENTER_{side}", verify=True,
+                            brick_value=latest, d_dir=d):
                 st.update(position=d, trades=st["trades"] + 1)
                 st["streak_fired"] = True
             # On failure: leave streak_fired False so the next brick retries.
