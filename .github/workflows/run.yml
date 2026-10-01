@@ -29,10 +29,9 @@ jobs:
 
       - name: Run bot
         env:
-          # 3Commas v2 API credentials - REQUIRED by bot.py's
-          # verify_entry_accepted(). Without these, verification fails
-          # OPEN (returns True on every signal) and the silent-loss bug
-          # this whole mechanism was built to prevent comes back.
+          # 3Commas v2 API credentials - needed by bot.py to VERIFY each
+          # signal was actually accepted by 3Commas (not just relayed
+          # silently-rejected by wtalerts).
           THREECOMMAS_API_KEY:    ${{ secrets.THREECOMMAS_API_KEY }}
           THREECOMMAS_API_SECRET: ${{ secrets.THREECOMMAS_API_SECRET }}
 
@@ -71,7 +70,14 @@ jobs:
         run: |
           git config user.name  "renko-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add state.json trades.log trades_journal.csv 2>/dev/null || true
+          git add state.json trades.log 2>/dev/null || true
+          echo "=== DIAGNOSTIC: git status ==="
+          git status || true
+          echo "=== DIAGNOSTIC: file sizes ==="
+          ls -la state.json trades.log 2>&1 || true
+          echo "=== DIAGNOSTIC: git diff stat ==="
+          git diff --stat HEAD || true
+          echo "=== END DIAGNOSTIC ==="
           if git diff --staged --quiet; then
             echo "nothing changed"
           else
