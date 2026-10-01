@@ -1008,7 +1008,28 @@ def main():
             except Exception as e:
                 log(f"{strategy}/{symbol}: ERROR {type(e).__name__}: {e}")
 
+    # DIAGNOSTIC (M3, 2026-10-02) - print state of state.json BEFORE save
+    import os as _os
+    _pre_state_size = (_os.stat('state.json').st_size
+                       if _os.path.exists('state.json') else -1)
+    _pre_state_mtime = (_os.stat('state.json').st_mtime
+                        if _os.path.exists('state.json') else -1)
+    log(f"  PRE-SAVE: state.json exists={_os.path.exists('state.json')} "
+        f"size={_pre_state_size} mtime={int(_pre_state_mtime)} "
+        f"writable={_os.access('state.json', _os.W_OK) if _os.path.exists('state.json') else 'N/A'} "
+        f"cwd={_os.getcwd()}")
+
     save_state(state)
+
+    _post_state_size = (_os.stat('state.json').st_size
+                        if _os.path.exists('state.json') else -1)
+    _post_state_mtime = (_os.stat('state.json').st_mtime
+                         if _os.path.exists('state.json') else -1)
+    _a_sol = state.get('A:SOLUSDT', {})
+    _a_sol_last_ms = _a_sol.get('last_ms', 'MISSING')
+    log(f"  POST-SAVE: state.json exists={_os.path.exists('state.json')} "
+        f"size={_post_state_size} mtime={int(_post_state_mtime)} "
+        f"A:SOLUSDT last_ms={_a_sol_last_ms}")
     log("done")
 
 
