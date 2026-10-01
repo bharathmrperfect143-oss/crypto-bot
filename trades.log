@@ -16919,3 +16919,23 @@
 2026-10-02 01:04:10 IST    PRE-SAVE: state.json exists=True size=70916 mtime=1790883242 writable=True cwd=/home/runner/work/crypto-bot/crypto-bot
 2026-10-02 01:04:10 IST    POST-SAVE: state.json exists=True size=70911 mtime=1790883250 A:SOLUSDT last_ms=1790742060000
 2026-10-02 01:04:10 IST  done
+2026-10-02 01:06:37 IST  ============================================================
+2026-10-02 01:06:38 IST    klines: 1000 candles window [1790742120000..1790802060000] start_ms_used=1790802000000
+2026-10-02 01:06:38 IST  A/SOLUSDT: flat. brick 117.7903  channel 62.1468 .. 138.2076
+2026-10-02 01:06:39 IST    klines: 1000 candles window [1790742120000..1790802060000] start_ms_used=1790802000000
+2026-10-02 01:06:39 IST  A/XRPUSDT: flat. brick 1.4913  channel 1.0000 .. 1.9991
+2026-10-02 01:06:41 IST    klines: 1000 candles window [1790742120000..1790802060000] start_ms_used=1790802000000
+2026-10-02 01:06:41 IST  B/SOLUSDT: holding LONG. fast +1  slow +1  brick 118.2065  trades 1
+2026-10-02 01:06:42 IST    klines: 1000 candles window [1790742120000..1790802060000] start_ms_used=1790802000000
+2026-10-02 01:06:42 IST  B/XRPUSDT: holding LONG. fast +1  slow +1  brick 1.4859  trades 2
+2026-10-02 01:06:43 IST    klines: 1000 candles window [1790742120000..1790802060000] start_ms_used=1790802000000
+2026-10-02 01:06:43 IST  C/SOLUSDT: flat. fast +1  slow +1  brick 118.2065  trades 0
+2026-10-02 01:06:44 IST    klines: 1000 candles window [1790742120000..1790802060000] start_ms_used=1790802000000
+2026-10-02 01:06:44 IST  C/XRPUSDT: flat. fast +1  slow +1  brick 1.4859  trades 0
+2026-10-02 01:06:45 IST    klines: 1000 candles window [1790742120000..1790802060000] start_ms_used=1790802000000
+2026-10-02 01:06:45 IST  D/SOLUSDT: holding SHORT. dir -1  brick 117.4315  trades 2  streak 2/8
+2026-10-02 01:06:46 IST    klines: 1000 candles window [1790742120000..1790802060000] start_ms_used=1790802000000
+2026-10-02 01:06:46 IST  D/XRPUSDT: holding SHORT. dir -1  brick 1.4894  trades 4  streak 1/8
+2026-10-02 01:06:46 IST    PRE-SAVE: state.json exists=True size=70911 mtime=1790883396 writable=True cwd=/home/runner/work/crypto-bot/crypto-bot
+2026-10-02 01:06:46 IST    POST-SAVE: state.json exists=True size=70910 mtime=1790883406 A:SOLUSDT last_ms=1790802060000
+2026-10-02 01:06:46 IST  done
