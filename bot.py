@@ -1032,7 +1032,45 @@ def main():
         f"A:SOLUSDT last_ms={_a_sol_last_ms}")
     log("done")
 
+    # ---- STALENESS CHECK (M3, 2026-10-02) -------------------------------
+    # A green workflow exit only proves the CODE ran. It does not prove the
+    # bot made PROGRESS. This project had a 4-day silent freeze where the
+    # workflow was green 2233 times, healthchecks.io pinged "healthy" every
+    # time, and Telegram stayed silent - because nothing checked whether
+    # state.json actually advanced toward real time.
+    #
+    # This check is the fix: if the OLDEST last_ms across all strategies is
+    # further behind than STALE_HOURS, the bot is stuck. Exit non-zero so the
+    # workflow fails, which makes the existing "Heartbeat (failure)" step
+    # curl healthchecks.io /fail, which fires the Telegram alert. No new
+    # infrastructure required.
+    #
+    # STALE_HOURS is deliberately generous: during normal catch-up the bot
+    # crawls ~100 minutes of data per 5-minute cycle, so last_ms legitimately
+    # lags real time for a while. 48h absorbs any catch-up we are mid-way
+    # through while still catching a genuine multi-day freeze.
+    STALE_HOURS = 48
+    now_ms = int(time.time() * 1000)
+    lags = []
+    for _k, _st in state.items():
+        if isinstance(_st, dict) and isinstance(_st.get("last_ms"), (int, float)):
+            lags.append((now_ms - int(_st["last_ms"])) / 3_600_000.0)
+
+    if not lags:
+        log("  STALENESS: no last_ms found in state - FAILING to be safe")
+        sys.exit(2)
+
+    worst = max(lags)
+    if worst > STALE_HOURS:
+        log(f"  STALENESS: FAIL - worst last_ms is {worst:.1f}h behind real time "
+            f"(threshold {STALE_HOURS}h). Bot is STUCK. "
+            f"This will trigger the Telegram alert via healthchecks.io.")
+        sys.exit(3)
+
+    log(f"  STALENESS: OK - worst last_ms is {worst:.1f}h behind "
+        f"(threshold {STALE_HOURS}h, {len(lags)} strategies checked)")
+    return 0
+
 
 if __name__ == "__main__":
-    main()
-    sys.exit(0)
+    sys.exit(main() or 0)
