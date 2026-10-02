@@ -981,15 +981,6 @@ def main():
                     continue
                 st["last_ms"] = new[-1][0]
                 price = new[-1][1]
-                # DIAGNOSTIC (M3, 2026-10-02) - print the klines window bounds
-                # so we can see whether the bot is reprocessing the same
-                # 1000-candle window every run (the suspected silent-freeze
-                # bug). Safe to remove once the real fix lands.
-                start_ms_used = st["last_ms"] - 60_000
-                log(f"  klines: {len(new)} candles "
-                    f"window [{new[0][0]}..{new[-1][0]}] "
-                    f"start_ms_used={start_ms_used}")
-
                 hourly = to_hourly(new, st)
                 if not hourly:
                     log(f"{strategy}/{symbol}: {len(new)} min, hour not "
@@ -1008,28 +999,7 @@ def main():
             except Exception as e:
                 log(f"{strategy}/{symbol}: ERROR {type(e).__name__}: {e}")
 
-    # DIAGNOSTIC (M3, 2026-10-02) - print state of state.json BEFORE save
-    import os as _os
-    _pre_state_size = (_os.stat('state.json').st_size
-                       if _os.path.exists('state.json') else -1)
-    _pre_state_mtime = (_os.stat('state.json').st_mtime
-                        if _os.path.exists('state.json') else -1)
-    log(f"  PRE-SAVE: state.json exists={_os.path.exists('state.json')} "
-        f"size={_pre_state_size} mtime={int(_pre_state_mtime)} "
-        f"writable={_os.access('state.json', _os.W_OK) if _os.path.exists('state.json') else 'N/A'} "
-        f"cwd={_os.getcwd()}")
-
     save_state(state)
-
-    _post_state_size = (_os.stat('state.json').st_size
-                        if _os.path.exists('state.json') else -1)
-    _post_state_mtime = (_os.stat('state.json').st_mtime
-                         if _os.path.exists('state.json') else -1)
-    _a_sol = state.get('A:SOLUSDT', {})
-    _a_sol_last_ms = _a_sol.get('last_ms', 'MISSING')
-    log(f"  POST-SAVE: state.json exists={_os.path.exists('state.json')} "
-        f"size={_post_state_size} mtime={int(_post_state_mtime)} "
-        f"A:SOLUSDT last_ms={_a_sol_last_ms}")
     log("done")
 
     # ---- STALENESS CHECK (M3, 2026-10-02) -------------------------------
@@ -1045,11 +1015,15 @@ def main():
     # curl healthchecks.io /fail, which fires the Telegram alert. No new
     # infrastructure required.
     #
-    # STALE_HOURS is deliberately generous: during normal catch-up the bot
-    # crawls ~100 minutes of data per 5-minute cycle, so last_ms legitimately
-    # lags real time for a while. 48h absorbs any catch-up we are mid-way
-    # through while still catching a genuine multi-day freeze.
-    STALE_HOURS = 48
+    # STALE_HOURS = 1 is deliberate and correct. This measures DATA LAG, not
+    # how long a position is held - a bot can hold a position for months and
+    # still be perfectly healthy, because it keeps fetching fresh candles
+    # every run. The only thing that should ever push last_ms behind real
+    # time is a genuine freeze, and the workflow runs every 5 minutes, so
+    # anything beyond ~1h behind means the bot stopped making progress.
+    # While catching up, last_ms moves FORWARD past real time (1000 x 1-min
+    # candles = ~16.7h of data per run), so catch-up never trips this check.
+    STALE_HOURS = 1
     now_ms = int(time.time() * 1000)
     lags = []
     for _k, _st in state.items():
