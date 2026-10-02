@@ -18450,3 +18450,26 @@
 2026-10-02 23:23:46 IST    POST-SAVE: state.json exists=True size=70918 mtime=1790963626 A:SOLUSDT last_ms=1790963580000
 2026-10-02 23:23:46 IST  done
 2026-10-02 23:23:46 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 48h, 8 strategies checked)
+2026-10-02 23:45:01 IST  ============================================================
+2026-10-02 23:45:02 IST    klines: 22 candles window [1790963640000..1790964900000] start_ms_used=1790964840000
+2026-10-02 23:45:02 IST  A/SOLUSDT: flat. brick 117.7903  channel 62.1468 .. 138.2076
+2026-10-02 23:45:03 IST    klines: 22 candles window [1790963640000..1790964900000] start_ms_used=1790964840000
+2026-10-02 23:45:03 IST  A/XRPUSDT: flat. brick 1.4913  channel 1.0000 .. 1.9991
+2026-10-02 23:45:04 IST    klines: 22 candles window [1790963640000..1790964900000] start_ms_used=1790964840000
+2026-10-02 23:45:04 IST  B/SOLUSDT: holding LONG. fast +1  slow +1  brick 122.9821  trades 1
+2026-10-02 23:45:05 IST    klines: 22 candles window [1790963640000..1790964900000] start_ms_used=1790964840000
+2026-10-02 23:45:05 IST  B/XRPUSDT: holding LONG. fast +1  slow +1  brick 1.4859  trades 2
+2026-10-02 23:45:06 IST    klines: 22 candles window [1790963640000..1790964900000] start_ms_used=1790964840000
+2026-10-02 23:45:06 IST  C/SOLUSDT: flat. fast +1  slow +1  brick 122.9821  trades 0
+2026-10-02 23:45:06 IST    klines: 22 candles window [1790963640000..1790964900000] start_ms_used=1790964840000
+2026-10-02 23:45:06 IST  C/XRPUSDT: flat. fast +1  slow +1  brick 1.4859  trades 0
+2026-10-02 23:45:07 IST    klines: 22 candles window [1790963640000..1790964900000] start_ms_used=1790964840000
+2026-10-02 23:45:07 IST  D/SOLUSDT: holding LONG. dir +1  brick 119.9198  trades 3  streak 9/8
+2026-10-02 23:45:07 IST    klines: 22 candles window [1790963640000..1790964900000] start_ms_used=1790964840000
+2026-10-02 23:45:07 IST  D/XRPUSDT: LONG entry (confirmed 8 bricks), brick 1.4984, flipping from position -1
+2026-10-02 23:45:08 IST    SENT D/XRPUSDT ENTER-LONG  amount=1000 USDT  (http 200)
+2026-10-02 23:45:11 IST  D/XRPUSDT: holding LONG. dir +1  brick 1.4984  trades 5  streak 8/8
+2026-10-02 23:45:11 IST    PRE-SAVE: state.json exists=True size=70918 mtime=1790964901 writable=True cwd=/home/runner/work/crypto-bot/crypto-bot
+2026-10-02 23:45:11 IST    POST-SAVE: state.json exists=True size=70919 mtime=1790964911 A:SOLUSDT last_ms=1790964900000
+2026-10-02 23:45:11 IST  done
+2026-10-02 23:45:11 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 48h, 8 strategies checked)
