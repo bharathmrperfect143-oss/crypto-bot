@@ -67,6 +67,7 @@ jobs:
         run: python bot.py
 
       - name: Save state
+        if: always()
         run: |
           git config user.name  "renko-bot"
           git config user.email "bot@users.noreply.github.com"
