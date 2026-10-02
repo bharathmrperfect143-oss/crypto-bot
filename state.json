@@ -1540,7 +1540,7 @@
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "prev_agree": 1,
+    "prev_agree": 0,
     "hour_bucket": 497492,
     "hour_close": 118.16,
     "price_history": [
@@ -2449,7 +2449,7 @@
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "prev_agree": 1,
+    "prev_agree": 0,
     "hour_bucket": 497492,
     "hour_close": 1.4755,
     "price_history": [
