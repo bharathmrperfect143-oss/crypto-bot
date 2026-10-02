@@ -110,6 +110,10 @@ WARMUP_DAYS  = 900      # history pulled on first run.
 VOL_TARGET       = 0.40   # annualized target volatility (40%)
 VOL_LOOKBACK_HRS = 720    # 30 days of hourly closes for realized-vol calc
 VOL_LMAX         = 1.0    # cap: never size above 1.0x the base amount
+VOL_LMIN         = 0.30   # floor: never size below 0.30x the base amount.
+                          # Added 3 Oct 2026. Without it a vol spike drives
+                          # the order size toward zero and C stops being a
+                          # meaningful comparison against B.
 # ---------------------------------------------------------------------------
 
 
@@ -512,10 +516,20 @@ def realized_vol_annualized(closes, lookback=VOL_LOOKBACK_HRS):
 
 
 def vol_target_size(base_amount, realized_vol):
-    """Scale base_amount by VOL_TARGET / realized_vol, capped at VOL_LMAX."""
+    """Scale base_amount by VOL_TARGET / realized_vol.
+
+    Capped ABOVE at VOL_LMAX (never size up past base) and now also
+    capped BELOW at VOL_LMIN. The lower bound did not exist before 3 Oct
+    2026, and that was a real latent bug: a volatility spike scales the
+    position down without limit, so an 800% realized vol would have sent
+    a 50 USDT order - so small it rounds to noise on 3Commas and does not
+    represent a meaningful test of the strategy. The floor keeps every C
+    trade big enough to actually measure something.
+    """
     if not realized_vol or realized_vol <= 0:
         return base_amount
     weight = min(VOL_LMAX, VOL_TARGET / realized_vol)
+    weight = max(VOL_LMIN, weight)
     return round(base_amount * weight, 2)
 
 
@@ -677,6 +691,11 @@ def run_strategy_c(symbol, names, st, new_closes, price):
             rvol = realized_vol_annualized(st.get("price_history", []))
             amount = vol_target_size(base_amount, rvol)
             rvol_pct = rvol * 100 if rvol else 0.0
+            log(f"  {tag}: VOL-SIZING - realized vol {rvol_pct:.1f}% "
+                f"(target {VOL_TARGET * 100:.0f}%, band "
+                f"{VOL_LMIN * 100:.0f}%-{VOL_LMAX * 100:.0f}%), "
+                f"base {base_amount} USDT -> size {amount} USDT "
+                f"from {len(st.get('price_history', []))} hourly closes")
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
@@ -996,6 +1015,19 @@ def main():
                 else:
                     run_strategy_d(symbol, names, st, hourly, price)
 
+                # ---- PER-STRATEGY EVALUATION HEARTBEAT (M3, 3 Oct 2026)
+                # Records that this strategy was actually RUN against a
+                # closed hourly bucket just now. Without this, "flat
+                # because the strategy chose to sit" and "flat because
+                # the strategy stopped being evaluated" are the exact
+                # same observable state - which is precisely how Strategy
+                # C stayed dark for six days with nothing detecting it
+                # (see CRYPTO_MASTER_RECORD.txt PART 32.5). The workflow
+                # healthcheck only proves the PROCESS ran; this proves
+                # each STRATEGY within it did real work.
+                st["last_eval_ms"] = int(time.time() * 1000)
+                st["last_eval_hour"] = hourly[-1]
+
             except Exception as e:
                 log(f"{strategy}/{symbol}: ERROR {type(e).__name__}: {e}")
 
@@ -1033,6 +1065,44 @@ def main():
     if not lags:
         log("  STALENESS: no last_ms found in state - FAILING to be safe")
         sys.exit(2)
+
+    # ---- PER-STRATEGY EVALUATION CHECK (M3, 3 Oct 2026) -----------------
+    # last_ms being current only proves the DATA is current. It does not
+    # prove each strategy is still being EVALUATED against it - a
+    # strategy whose runner started throwing on every hour, or whose
+    # hourly bucket stopped advancing, would keep last_ms fresh forever
+    # while silently never being evaluated. Strategy C lived in exactly
+    # that blind spot for six days.
+    #
+    # STALE_EVAL_HOURS is deliberately larger than the workflow interval
+    # (5 min) because strategies only act on CLOSED hourly buckets, so a
+    # healthy strategy is only evaluated roughly once an hour. 3 hours
+    # allows three consecutive missed hours before we call it stuck -
+    # tight enough to catch a day-old failure the same day, loose enough
+    # that a single slow or retried run never false-alarms.
+    STALE_EVAL_HOURS = 3
+    now_eval = int(time.time() * 1000)
+    starved = []
+    for _k, _st in state.items():
+        if not isinstance(_st, dict):
+            continue
+        _le = _st.get("last_eval_ms")
+        if not isinstance(_le, (int, float)):
+            # No heartbeat at all for this strategy. Expected ONLY on the
+            # first run after this change is deployed - every strategy
+            # gets one on its next closed hour. Do not fail on it.
+            continue
+        _lag_h = (now_eval - int(_le)) / 3_600_000.0
+        if _lag_h > STALE_EVAL_HOURS:
+            starved.append((_k, _lag_h))
+
+    if starved:
+        for _k, _lag_h in starved:
+            log(f"  STALENESS: FAIL - {_k} has not been evaluated in "
+                f"{_lag_h:.1f}h (threshold {STALE_EVAL_HOURS}h). Data is "
+                f"current but this STRATEGY is not being evaluated.")
+        log("  This will trigger the Telegram alert via healthchecks.io.")
+        sys.exit(4)
 
     worst = max(lags)
     if worst > STALE_HOURS:
