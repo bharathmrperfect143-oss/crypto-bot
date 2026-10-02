@@ -73,6 +73,7 @@ a deliberately isolated experiment.
 """
 
 import base64
+import csv
 import hashlib
 import hmac
 import json
@@ -309,6 +310,91 @@ DRY_RUN    = os.environ.get("DRY_RUN", "").lower() in ("1", "true", "yes")
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+# --------------------------------------------------------------------------
+# JOURNAL BRIDGE (M3, 3 Oct 2026)
+#
+# journal.py BACKFILLS signal rows - it does not create them. Every row
+# must originate here, at the moment a signal is attempted, otherwise
+# the collector has nothing to match against 3Commas deals and prints
+# "journal: no rows to update" forever. That is exactly what happened:
+# trades_journal.csv did not exist, so the collector returned before it
+# ever called the 3Commas API, and the endpoint was never even tested.
+#
+# send_signal() is the single funnel all 7 entry/exit call sites pass
+# through, and it already receives strategy, symbol and amount - so one
+# wrapper here covers every signal with no changes to the strategies.
+# --------------------------------------------------------------------------
+
+JOURNAL_FILE = "trades_journal.csv"
+
+JOURNAL_HEADER = [
+    "signal_id", "ts_signal_utc", "strategy", "symbol", "action",
+    "brick_value", "fast_dir", "slow_dir", "d_dir", "vol_pct",
+    "amount_usdt", "btc_price", "btc_change_1h_pct", "btc_change_4h_pct",
+    "btc_change_24h_pct", "funding_rate_pct", "hour_of_day_utc",
+    "day_of_week_utc", "wtalerts_status", "wtalerts_http", "verify_attempt",
+    "deal_id", "entry_price", "exit_price", "pnl_pct", "pnl_usdt",
+    "time_in_trade_min", "status", "notes",
+]
+
+
+def _action_of(label):
+    """'B/SOLUSDT ENTER-LONG' -> 'ENTER_LONG'. The label is the only
+    place the action is expressed, so parse it rather than threading a
+    new argument through 7 call sites."""
+    u = label.upper()
+    if "ENTER-LONG" in u or "ENTER_LONG" in u:
+        return "ENTER_LONG"
+    if "ENTER-SHORT" in u or "ENTER_SHORT" in u:
+        return "ENTER_SHORT"
+    if "EXIT" in u:
+        return "EXIT_ALL"
+    return ""
+
+
+def _journal_open():
+    new = not os.path.exists(JOURNAL_FILE)
+    if new:
+        with open(JOURNAL_FILE, "w", newline="", encoding="utf-8") as f:
+            csv.writer(f).writerow(JOURNAL_HEADER)
+    return new
+
+
+def journal_signal(strategy, symbol, label, amount, status, notes=""):
+    """Append ONE signal row. Never raises - a journal failure must not
+    be able to stop a trade, so every error here is logged and swallowed.
+    If this file cannot be written, the bot still trades correctly; we
+    just lose the row, and the log says so loudly."""
+    try:
+        action = _action_of(label)
+        if not action:
+            return None
+        now = int(time.time())
+        signal_id = f"{now}_{strategy}_{symbol}_{action}"
+        dt_utc = datetime.now(timezone.utc)
+        _journal_open()
+        with open(JOURNAL_FILE, "a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow([
+                signal_id,
+                dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                strategy, symbol, action,
+                "", "", "", "", "",          # brick/fast/slow/d_dir/vol
+                amount, "", "", "", "", "",  # btc + funding
+                dt_utc.hour,
+                dt_utc.strftime("%a"),
+                "", "",                      # wtalerts status/http
+                0, "",                       # verify_attempt, deal_id
+                "", "", "", "",              # entry/exit/pnl
+                "", status, notes,
+            ])
+        return signal_id
+    except Exception as e:
+        log(f"  !! journal write failed for {label}: "
+            f"{type(e).__name__}: {e} - trade unaffected")
+        return None
+
+
 def log(msg):
     # printed in IST so it matches 3Commas/your-local-time directly, no
     # mental timezone conversion needed. All internal logic (hourly bar
@@ -345,6 +431,8 @@ def send_signal(strategy, symbol, code, label, amount=None):
     if DRY_RUN:
         log(f"  DRY RUN - would send {label}  amount={amount} USDT  "
             f"type=quote  order=market")
+        journal_signal(strategy, symbol, label, amount, "sent",
+                       "DRY_RUN - not actually sent")
         return True
     # FLAT structure - per 3Commas' own official JSON guide
     # (https://help.3commas.io/en/articles/16281112), the Pine Script
@@ -368,6 +456,8 @@ def send_signal(strategy, symbol, code, label, amount=None):
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 log(f"  SENT {label}  amount={amount} USDT  (http {r.status})")
+                journal_signal(strategy, symbol, label, amount, "sent",
+                               f"wtalerts http {r.status}")
                 # Small courtesy delay between webhook sends. (The
                 # repeated "amountPerTrade: nan" declines were actually
                 # caused by the wrong JSON structure above, not a race
@@ -376,11 +466,17 @@ def send_signal(strategy, symbol, code, label, amount=None):
                 return True
         except urllib.error.HTTPError as e:
             log(f"  webhook http {e.code} on {label}")
+            journal_signal(strategy, symbol, label, amount, "rejected",
+                           f"wtalerts http {e.code}")
             if e.code < 500:
                 return False
         except Exception as e:
             log(f"  webhook error on {label}: {e}")
+            journal_signal(strategy, symbol, label, amount, "rejected",
+                           f"{type(e).__name__}: {e}")
         time.sleep(3)
+    journal_signal(strategy, symbol, label, amount, "rejected",
+                   "all 3 webhook attempts failed")
     return False
 
 
