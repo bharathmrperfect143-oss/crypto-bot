@@ -18301,3 +18301,24 @@
 2026-10-02 21:11:26 IST    POST-SAVE: state.json exists=True size=70920 mtime=1790955686 A:SOLUSDT last_ms=1790955660000
 2026-10-02 21:11:26 IST  done
 2026-10-02 21:11:26 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 48h, 8 strategies checked)
+2026-10-02 21:28:28 IST  ============================================================
+2026-10-02 21:28:29 IST    klines: 17 candles window [1790955720000..1790956680000] start_ms_used=1790956620000
+2026-10-02 21:28:29 IST  A/SOLUSDT: 17 min, hour not complete yet, price 119.9100
+2026-10-02 21:28:29 IST    klines: 17 candles window [1790955720000..1790956680000] start_ms_used=1790956620000
+2026-10-02 21:28:29 IST  A/XRPUSDT: 17 min, hour not complete yet, price 1.5063
+2026-10-02 21:28:30 IST    klines: 17 candles window [1790955720000..1790956680000] start_ms_used=1790956620000
+2026-10-02 21:28:30 IST  B/SOLUSDT: 17 min, hour not complete yet, price 119.9300
+2026-10-02 21:28:30 IST    klines: 17 candles window [1790955720000..1790956680000] start_ms_used=1790956620000
+2026-10-02 21:28:30 IST  B/XRPUSDT: 17 min, hour not complete yet, price 1.5063
+2026-10-02 21:28:31 IST    klines: 17 candles window [1790955720000..1790956680000] start_ms_used=1790956620000
+2026-10-02 21:28:31 IST  C/SOLUSDT: 17 min, hour not complete yet, price 119.9100
+2026-10-02 21:28:31 IST    klines: 17 candles window [1790955720000..1790956680000] start_ms_used=1790956620000
+2026-10-02 21:28:31 IST  C/XRPUSDT: 17 min, hour not complete yet, price 1.5063
+2026-10-02 21:28:32 IST    klines: 17 candles window [1790955720000..1790956680000] start_ms_used=1790956620000
+2026-10-02 21:28:32 IST  D/SOLUSDT: 17 min, hour not complete yet, price 119.9100
+2026-10-02 21:28:32 IST    klines: 17 candles window [1790955720000..1790956680000] start_ms_used=1790956620000
+2026-10-02 21:28:32 IST  D/XRPUSDT: 17 min, hour not complete yet, price 1.5062
+2026-10-02 21:28:32 IST    PRE-SAVE: state.json exists=True size=70920 mtime=1790956708 writable=True cwd=/home/runner/work/crypto-bot/crypto-bot
+2026-10-02 21:28:32 IST    POST-SAVE: state.json exists=True size=70920 mtime=1790956712 A:SOLUSDT last_ms=1790956680000
+2026-10-02 21:28:32 IST  done
+2026-10-02 21:28:32 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 48h, 8 strategies checked)
