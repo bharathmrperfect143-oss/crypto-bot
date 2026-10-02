@@ -331,8 +331,10 @@ def main():
 
     mismatches = []
     silent_stucks = []
+    starved = []          # M3 3 Oct 2026 - strategies not being evaluated
     healthy = 0
     skipped = 0
+    now_ms = int(time.time() * 1000)
 
     for key in sorted(state.keys()):
         if key not in BOT_CONFIG:
@@ -343,6 +345,23 @@ def main():
         strategy, symbol = key.split(":")
         believed_pos = st.get("position", 0)
         trades_count = st.get("trades", 0)
+
+        # ---- PER-STRATEGY EVALUATION HEARTBEAT (M3, 3 Oct 2026) --------
+        # bot.py now writes last_eval_ms every time a strategy is run
+        # against a closed hourly bucket. Without it, a strategy that has
+        # stopped being evaluated is indistinguishable from one that is
+        # correctly sitting flat - which is the exact blind spot that hid
+        # Strategy C for six days (CRYPTO_MASTER_RECORD.txt PART 32.5),
+        # and the same caveat already noted for Strategy A. This turns
+        # that "cannot be verified" into a real check.
+        STALE_EVAL_HOURS = 3
+        last_eval = st.get("last_eval_ms")
+        if isinstance(last_eval, (int, float)):
+            eval_lag_h = (now_ms - int(last_eval)) / 3_600_000.0
+            if eval_lag_h > STALE_EVAL_HOURS:
+                starved.append((key, eval_lag_h))
+        # absent field = first run after the heartbeat was deployed, or a
+        # strategy that has not hit a closed hour yet. NOT an error.
         actual_for_key = actual_by_key[key]
 
         actual_dirs = [deal_side(d) for d in actual_for_key]
@@ -410,7 +429,19 @@ def main():
             silent_stucks.append((key, st["streak_len"]))
 
     log("INFO", f"summary: healthy={healthy}, mismatches={len(mismatches)}, "
-        f"silent-stuck={len(silent_stucks)}, skipped={skipped}")
+        f"silent-stuck={len(silent_stucks)}, "
+        f"not-being-evaluated={len(starved)}, skipped={skipped}")
+
+    if starved:
+        log("FAIL", f"{len(starved)} strategy(ies) NOT BEING EVALUATED "
+                    f"(data is current but the strategy itself is not "
+                    f"being run against closed hours):")
+        for key, lag_h in starved:
+            log("FAIL", f"  {key}: last evaluated {lag_h:.1f}h ago "
+                        f"(threshold {STALE_EVAL_HOURS}h). This is the "
+                        f"failure that hid Strategy C for six days - a "
+                        f"strategy that is not being evaluated looks "
+                        f"identical to one correctly sitting flat.")
 
     if silent_stucks:
         log("WARN", f"{len(silent_stucks)} strategy D instance(s) stuck:")
@@ -427,7 +458,10 @@ def main():
                     f"status={t.get('status', '?')!r}")
         return 1
 
-    if silent_stucks:
+    # Not-being-evaluated is a FAIL too, but reported only AFTER
+    # mismatches so a direction mismatch is never masked by a noisier,
+    # more recent problem. (M3, 3 Oct 2026.)
+    if silent_stucks or starved:
         return 1
 
     log("OK", f"all {healthy} pair(s) in sync with 3Commas")
