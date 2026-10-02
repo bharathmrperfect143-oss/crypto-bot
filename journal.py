@@ -325,17 +325,53 @@ def fetch_closed_deals(scope="completed", limit=100):
     # 3Commas paginates with ?limit and ?offset
     offset = 0
     page_size = min(limit, 100)
+    # Which endpoint shape actually answered. Probed once, then reused, so
+    # a wrong guess is not paid for on every page. See the note below on
+    # why this matters.
+    working_path = None
+
     while offset < limit:
-        path = f"/open_api/deals?limit={page_size}&offset={offset}&scope={scope}"
-        try:
-            data = _3commas_api_get(path)
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                # older API path; try the renamed one
-                path = f"/open_api/deals/finished?limit={page_size}&offset={offset}"
+        if working_path is None:
+            candidates = [
+                f"/open_api/deals?limit={page_size}&offset={offset}&scope={scope}",
+                f"/open_api/deals/finished?limit={page_size}&offset={offset}",
+            ]
+        else:
+            candidates = [working_path.replace(
+                f"offset={offset}", f"offset={offset}", 1)]
+
+        data = None
+        last_err = None
+        for path in candidates:
+            try:
                 data = _3commas_api_get(path)
-            else:
-                raise
+                working_path = path
+                break
+            except urllib.error.HTTPError as e:
+                last_err = e
+                continue
+            except Exception as e:      # network / auth / decode
+                last_err = e
+                continue
+
+        if data is None:
+            # RAISE, do not return an empty list. This is the bug fixed
+            # 3 Oct 2026: the old code let the LAST exception propagate
+            # only if it was not a 404, but a 404 on BOTH candidate
+            # paths (or on the fallback) was swallowed into `break`,
+            # returning []. The collector then wrote an empty journal and
+            # reported success, so a permanently-wrong endpoint would
+            # look exactly like "no trades yet" forever, with nothing
+            # ever surfacing the problem. Failing loudly is the only
+            # honest behaviour here.
+            raise RuntimeError(
+                f"3Commas deals endpoint not usable. Tried: {candidates}. "
+                f"Last error: {last_err!r}. The v2 deals path has been "
+                f"renamed at least twice across 3Commas API versions, so "
+                f"this must be re-verified against the current official "
+                f"docs before the journal can be trusted."
+            ) from last_err
+
         if not isinstance(data, list):
             # some v2 endpoints return {"data": [...], "total": N}
             data = data.get("data", []) if isinstance(data, dict) else []
@@ -345,6 +381,14 @@ def fetch_closed_deals(scope="completed", limit=100):
         if len(data) < page_size:
             break
         offset += page_size
+
+    if not out:
+        raise RuntimeError(
+            "3Commas deals endpoint answered successfully but returned "
+            "ZERO deals. That is a real result (there may genuinely be no "
+            "closed deals in this window) but it must not be "
+            "indistinguishable from a broken endpoint - hence the raise."
+        )
     return out
 
 
