@@ -76,7 +76,19 @@ jobs:
           # collector run. Without this, every signal row the bot writes
           # is wiped on the next workflow's checkout - the collector sees
           # an empty/missing CSV even though bot.py has been firing.
-          git add state.json trades.log trades_journal.csv 2>/dev/null || true
+          # M3 2026-10-04 (REVISED): a non-existent trades_journal.csv
+          # (the normal case until the journal bridge fires) caused the
+          # previous single-line `git add state.json trades.log
+          # trades_journal.csv` to exit 128, which under the `|| true`
+          # swallowed the error AND aborted staging of the OTHER files.
+          # Git's `git add A B C` stops at the first failure rather than
+          # staging the survivors. Adding each file individually with
+          # `[ -f FILE ]` lets a missing CSV skip silently while
+          # state.json and trades.log still commit. This was the cause
+          # of every "nothing changed" since the previous fix.
+          [ -f state.json ]       && git add state.json       || true
+          [ -f trades.log ]       && git add trades.log       || true
+          [ -f trades_journal.csv ] && git add trades_journal.csv || true
           echo "=== DIAGNOSTIC: git status ==="
           git status || true
           echo "=== DIAGNOSTIC: file sizes ==="
