@@ -71,7 +71,12 @@ jobs:
         run: |
           git config user.name  "renko-bot"
           git config user.email "bot@users.noreply.github.com"
-          git add state.json trades.log 2>/dev/null || true
+          # M3 2026-10-04: add trades_journal.csv so signal rows written
+          # by bot.py's journal bridge survive to the next journal.yml
+          # collector run. Without this, every signal row the bot writes
+          # is wiped on the next workflow's checkout - the collector sees
+          # an empty/missing CSV even though bot.py has been firing.
+          git add state.json trades.log trades_journal.csv 2>/dev/null || true
           echo "=== DIAGNOSTIC: git status ==="
           git status || true
           echo "=== DIAGNOSTIC: file sizes ==="
