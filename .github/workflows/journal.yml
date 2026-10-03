@@ -2,10 +2,14 @@ name: journal collector
 
 on:
   schedule:
-    # Run weekly on Sunday at 23:30 UTC (= 05:00 IST Monday). Weekend
-    # has the most closed deals because positions held over the weekend
-    # close at any time.
-    - cron: '30 23 * * 0'
+    # Run DAILY at 00:00 UTC (= 05:30 IST). The 3Commas v2 deals
+    # endpoint closes its window over each UTC day, so a daily
+    # collection is enough to capture every deal by the next morning.
+    # M3, 4 Oct 2026 - was weekly Sunday 23:30 UTC, weekly was too
+    # sparse once the bot's journal bridge (PART 33.7) started
+    # producing rows - a missed weekly run meant a whole week of
+    # signal rows with no P/L backfill.
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 permissions:
