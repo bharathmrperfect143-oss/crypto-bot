@@ -360,7 +360,8 @@ def _journal_open():
     return new
 
 
-def journal_signal(strategy, symbol, label, amount, status, notes=""):
+def journal_signal(strategy, symbol, label, amount, status, notes="",
+                d_dir=None):
     """Append ONE signal row. Never raises - a journal failure must not
     be able to stop a trade, so every error here is logged and swallowed.
     If this file cannot be written, the bot still trades correctly; we
@@ -379,8 +380,8 @@ def journal_signal(strategy, symbol, label, amount, status, notes=""):
                 signal_id,
                 dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 strategy, symbol, action,
-                "", "", "", "", "",          # brick/fast/slow/d_dir/vol
-                amount, "", "", "", "", "",  # btc + funding
+                "", "", "", (d_dir if d_dir is not None else ""), "",
+                amount, "", "", "", "", "",  # brick/fast/slow/d_dir/vol
                 dt_utc.hour,
                 dt_utc.strftime("%a"),
                 "", "",                      # wtalerts status/http
@@ -422,7 +423,7 @@ def http_get(url, tries=3):
             time.sleep(3)
 
 
-def send_signal(strategy, symbol, code, label, amount=None):
+def send_signal(strategy, symbol, code, label, amount=None, d_dir=None):
     if not code:
         log(f"  !! no code configured for {label} - skipped")
         return False
@@ -432,7 +433,7 @@ def send_signal(strategy, symbol, code, label, amount=None):
         log(f"  DRY RUN - would send {label}  amount={amount} USDT  "
             f"type=quote  order=market")
         journal_signal(strategy, symbol, label, amount, "sent",
-                       "DRY_RUN - not actually sent")
+                       "DRY_RUN - not actually sent", d_dir=d_dir)
         return True
     # FLAT structure - per 3Commas' own official JSON guide
     # (https://help.3commas.io/en/articles/16281112), the Pine Script
@@ -457,7 +458,7 @@ def send_signal(strategy, symbol, code, label, amount=None):
             with urllib.request.urlopen(req, timeout=30) as r:
                 log(f"  SENT {label}  amount={amount} USDT  (http {r.status})")
                 journal_signal(strategy, symbol, label, amount, "sent",
-                               f"wtalerts http {r.status}")
+                               f"wtalerts http {r.status}", d_dir=d_dir)
                 # Small courtesy delay between webhook sends. (The
                 # repeated "amountPerTrade: nan" declines were actually
                 # caused by the wrong JSON structure above, not a race
@@ -467,16 +468,16 @@ def send_signal(strategy, symbol, code, label, amount=None):
         except urllib.error.HTTPError as e:
             log(f"  webhook http {e.code} on {label}")
             journal_signal(strategy, symbol, label, amount, "rejected",
-                           f"wtalerts http {e.code}")
+                           f"wtalerts http {e.code}", d_dir=d_dir)
             if e.code < 500:
                 return False
         except Exception as e:
             log(f"  webhook error on {label}: {e}")
             journal_signal(strategy, symbol, label, amount, "rejected",
-                           f"{type(e).__name__}: {e}")
+                           f"{type(e).__name__}: {e}", d_dir=d_dir)
         time.sleep(3)
     journal_signal(strategy, symbol, label, amount, "rejected",
-                   "all 3 webhook attempts failed")
+                   "all 3 webhook attempts failed", d_dir=d_dir)
     return False
 
 
@@ -984,7 +985,7 @@ def run_strategy_d(symbol, names, st, new_closes, price):
             label = f"{tag} ENTER-{side}"
             log(f"{tag}: {side} entry (confirmed {D_CONFIRM_N} bricks), "
                 f"brick {latest:.4f}, flipping from position {pos:+d}")
-            if (send_signal("D", symbol, code, label)
+            if (send_signal("D", symbol, code, label, d_dir=d)
                     and verify_entry_accepted("D", symbol)):
                 st.update(position=d, trades=st["trades"] + 1)
                 st["streak_fired"] = True
