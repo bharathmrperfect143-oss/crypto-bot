@@ -19193,3 +19193,16 @@
 2026-10-04 20:29:36 IST  D/XRPUSDT: holding LONG. dir -1  brick 1.4984  trades 5  streak 7/8
 2026-10-04 20:29:36 IST  done
 2026-10-04 20:29:36 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
+2026-10-04 21:39:17 IST  ============================================================
+2026-10-04 21:39:18 IST  A/SOLUSDT: flat. brick 117.7903  channel 62.1468 .. 138.2076
+2026-10-04 21:39:18 IST  A/XRPUSDT: flat. brick 1.4913  channel 1.0000 .. 1.9991
+2026-10-04 21:39:19 IST  B/SOLUSDT: holding LONG. fast +1  slow +1  brick 118.2065  trades 1
+2026-10-04 21:39:19 IST  B/XRPUSDT: holding LONG. fast +1  slow +1  brick 1.4859  trades 2
+2026-10-04 21:39:20 IST  C/SOLUSDT: flat. fast +1  slow +1  brick 118.2065  trades 0
+2026-10-04 21:39:21 IST  C/XRPUSDT: flat. fast +1  slow +1  brick 1.4859  trades 0
+2026-10-04 21:39:21 IST  D/SOLUSDT: holding LONG. dir +1  brick 121.7294  trades 3  streak 5/8
+2026-10-04 21:39:22 IST  D/XRPUSDT: SHORT entry (confirmed 8 bricks), brick 1.5029, flipping from position +1
+2026-10-04 21:39:22 IST    SENT D/XRPUSDT ENTER-SHORT  amount=1000 USDT  (http 200)
+2026-10-04 21:39:25 IST  D/XRPUSDT: holding SHORT. dir -1  brick 1.5029  trades 6  streak 8/8
+2026-10-04 21:39:25 IST  done
+2026-10-04 21:39:25 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
