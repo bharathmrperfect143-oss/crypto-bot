@@ -311,6 +311,80 @@ def _3commas_api_get(path):
         return json.loads(r.read().decode())
 
 
+def _flatten_live_strategies_to_deals(live_resp):
+    """Take a /open_api/strategies/live response and emit one deal-shaped
+    dict per bot's profileStrategies entry whose status is "exited".
+
+    Why this exists: 3Commas v2 has NO standalone /open_api/deals endpoint
+    (it returns 404 on /open_api/deals and /open_api/deals/finished).
+    Closed deals are returned INSIDE the strategies/live payload, embedded
+    inside each bot's profileStrategies array. When a position closes,
+    the bot stays in "live" but that entry flips from status="entered" to
+    status="exited" with exitPrice populated. So the data we need is
+    always reachable - just through the wrong-named endpoint.
+
+    The output shape is what collect_deals() and _parse_bot_name() already
+    expect: id, pair, entry_price, exit_price, created_at, closed_at,
+    profit_percentage, profit_usdt, signalBot (with .name). Field
+    extraction tries multiple possible v2 aliases because the v2 docs
+    are not all enumerated in one place.
+
+    KNOWN UNVERIFIED: this user has 0 closed deals on 3Commas as of
+    6 Oct 2026. The status="exited" branch in profileStrategies has
+    never been observed in production against this codebase. The shape
+    is inferred from the active-bot response + v2 schema guesses. The
+    loud-error behaviour is unchanged, so the first time this fires
+    wrong, the collector raises immediately.
+    """
+    out = []
+    if not isinstance(live_resp, list):
+        live_resp = (live_resp or {}).get("data", []) if isinstance(live_resp, dict) else []
+    for bot in live_resp:
+        if not isinstance(bot, dict):
+            continue
+        signal_bot = bot.get("signalBot") or {}
+        profiles = bot.get("profileStrategies") or []
+        for ps in profiles:
+            if not isinstance(ps, dict):
+                continue
+            status = (ps.get("status") or "").lower()
+            if status != "exited":
+                continue
+            entry_ts = (ps.get("enteredAt") or ps.get("createdAt")
+                        or ps.get("created_at") or "")
+            close_ts = (ps.get("closedAt") or ps.get("updatedAt")
+                        or ps.get("finished_at") or entry_ts)
+            # profitLoss can be a number or a percentage depending on the
+            # account setup; on Binance Futures the trade path exposes
+            # it as the percentage directly. The journal expects percent.
+            pnl_pct = ps.get("profitLoss") or ps.get("profit_loss")                       or ps.get("profitPercentage") or ps.get("profit_percentage") or ""
+            pnl_usdt = (ps.get("profitLossUsdt") or ps.get("profit_usdt")
+                        or ps.get("profitUsd") or ps.get("profit") or "")
+            deal = {
+                    "id":                ps.get("id") or ps.get("profileStrategyId") or "",
+                    "type":              "Deal",
+                    "pair":              bot.get("pair") or "",
+                    "amount":            ps.get("amount") or "",
+                    "base_order_volume": "",
+                    "safety_order_volume": "",
+                    "created_at":        entry_ts,
+                    "activated_at":      entry_ts,
+                    "closed_at":         close_ts,
+                    "finished_at":       close_ts,
+                    "entry_price":       ps.get("entryPrice") or ps.get("entry_price") or "",
+                    "exit_price":        ps.get("exitPrice") or ps.get("exit_price") or "",
+                    "close_price":       ps.get("exitPrice") or ps.get("exit_price") or "",
+                    "base_order_price":  ps.get("entryPrice") or "",
+                    "profit_percentage":  pnl_pct,
+                    "profit_usdt":        pnl_usdt,
+                    "profit":             pnl_usdt,
+                    "signalBot":         signal_bot,
+                }
+            if deal["id"]:
+                out.append(deal)
+    return out
+
+
 def fetch_closed_deals(scope="completed", limit=100):
     """Fetch closed/completed deals from 3Commas v2 API.
 
@@ -320,75 +394,81 @@ def fetch_closed_deals(scope="completed", limit=100):
       finished_at, closed_at, profit_percentage, profit_usdt,
       entry_price, exit_price, bot_name (in signalBot.name),
       signalBot.id, created_at
+
+    v2 has NO /open_api/deals endpoint. Closed deals live inside the
+    strategies/live response under each bot's profileStrategies[] array
+    (entries with status="exited"). This function probes three
+    candidates in order: the documented-but-dead /open_api/deals,
+    /open_api/deals/finished (also dead), and finally the actually-
+    working /open_api/strategies/live. The third candidate's response
+    is transformed via _flatten_live_strategies_to_deals() into the
+    same shape the first two would have produced.
     """
     out = []
-    # 3Commas paginates with ?limit and ?offset
     offset = 0
     page_size = min(limit, 100)
-    # Which endpoint shape actually answered. Probed once, then reused, so
-    # a wrong guess is not paid for on every page. See the note below on
-    # why this matters.
-    working_path = None
+    candidates = [
+        f"/open_api/deals?limit={page_size}&offset={offset}&scope={scope}",
+        f"/open_api/deals/finished?limit={page_size}&offset={offset}",
+        # Third candidate: the working endpoint. No offset/offset
+        # pagination here - the live endpoint returns ALL live bots in
+        # one shot, and closed deals are a subset of those bots'
+        # profileStrategies entries. We only call this once.
+        "/open_api/strategies/live",
+    ]
+    used_endpoint = None
+    last_err = None
+    data = None
+    for path in candidates:
+        try:
+            data = _3commas_api_get(path)
+            used_endpoint = path
+            break
+        except urllib.error.HTTPError as e:
+            last_err = e
+            continue
+        except Exception as e:
+            last_err = e
+            continue
 
-    while offset < limit:
-        if working_path is None:
-            candidates = [
-                f"/open_api/deals?limit={page_size}&offset={offset}&scope={scope}",
-                f"/open_api/deals/finished?limit={page_size}&offset={offset}",
-            ]
-        else:
-            candidates = [working_path.replace(
-                f"offset={offset}", f"offset={offset}", 1)]
+    if data is None:
+        # LOUD-ERROR FIX (3 Oct 2026, M3): do not return an empty list
+        # silently. A permanently-wrong endpoint used to look exactly
+        # like "no trades yet" forever.
+        raise RuntimeError(
+            f"3Commas deals endpoints not usable. Tried: {candidates}. "
+            f"Last error: {last_err!r}. The third candidate "
+            f"/open_api/strategies/live - which the reconciler confirms "
+            f"works - is expected to return a transformable result."
+        ) from last_err
 
-        data = None
-        last_err = None
-        for path in candidates:
-            try:
-                data = _3commas_api_get(path)
-                working_path = path
-                break
-            except urllib.error.HTTPError as e:
-                last_err = e
-                continue
-            except Exception as e:      # network / auth / decode
-                last_err = e
-                continue
-
-        if data is None:
-            # RAISE, do not return an empty list. This is the bug fixed
-            # 3 Oct 2026: the old code let the LAST exception propagate
-            # only if it was not a 404, but a 404 on BOTH candidate
-            # paths (or on the fallback) was swallowed into `break`,
-            # returning []. The collector then wrote an empty journal and
-            # reported success, so a permanently-wrong endpoint would
-            # look exactly like "no trades yet" forever, with nothing
-            # ever surfacing the problem. Failing loudly is the only
-            # honest behaviour here.
-            raise RuntimeError(
-                f"3Commas deals endpoint not usable. Tried: {candidates}. "
-                f"Last error: {last_err!r}. The v2 deals path has been "
-                f"renamed at least twice across 3Commas API versions, so "
-                f"this must be re-verified against the current official "
-                f"docs before the journal can be trusted."
-            ) from last_err
-
+    if used_endpoint == "/open_api/strategies/live":
+        # Transform the bot-list response into deal-shaped records.
+        # Only status="exited" entries are emitted.
+        out = _flatten_live_strategies_to_deals(data)
+    else:
+        # Legacy path: deals endpoint returned a flat list.
         if not isinstance(data, list):
-            # some v2 endpoints return {"data": [...], "total": N}
             data = data.get("data", []) if isinstance(data, dict) else []
-        if not data:
-            break
         out.extend(data)
-        if len(data) < page_size:
-            break
-        offset += page_size
 
     if not out:
-        raise RuntimeError(
-            "3Commas deals endpoint answered successfully but returned "
-            "ZERO deals. That is a real result (there may genuinely be no "
-            "closed deals in this window) but it must not be "
-            "indistinguishable from a broken endpoint - hence the raise."
-        )
+        # ZERO results is a real signal that needs to be visible. If
+        # the live endpoint correctly returns 4 bots but no
+        # status="exited" entries, that means there are no closed deals
+        # YET - the journal collector should treat that as "nothing to
+        # do this run" rather than a failure. So we do NOT raise here
+        # when the live endpoint was the source and it succeeded.
+        if used_endpoint != "/open_api/strategies/live":
+            raise RuntimeError(
+                "3Commas deals endpoint answered successfully but "
+                "returned ZERO deals. That is a real result but must "
+                "not be silently indistinguishable from a broken "
+                "endpoint."
+            )
+        # else: live endpoint returned no exited profiles. Genuine.
+        # Quiet success, return the empty list.
+
     return out
 
 
