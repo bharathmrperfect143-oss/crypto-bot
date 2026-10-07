@@ -3,3 +3,5 @@ signal_id,ts_signal_utc,strategy,symbol,action,brick_value,fast_dir,slow_dir,d_d
 1791194496_D_XRPUSDT_ENTER_LONG,2026-10-05T10:01:36Z,D,XRPUSDT,ENTER_LONG,,,,1,,1000,,,,,,10,Mon,,,0,,,,,,,sent,wtalerts http 200
 1791367300_B_XRPUSDT_EXIT_ALL,2026-10-07T10:01:40Z,B,XRPUSDT,EXIT_ALL,,,,,,1000,,,,,,10,Wed,,,0,,,,,,,sent,wtalerts http 200
 1791378100_D_XRPUSDT_ENTER_SHORT,2026-10-07T13:01:40Z,D,XRPUSDT,ENTER_SHORT,,,,-1,,1000,,,,,,13,Wed,,,0,,,,,,,sent,wtalerts http 200
+1791385301_C_SOLUSDT_ENTER_LONG,2026-10-07T15:01:41Z,C,SOLUSDT,ENTER_LONG,,,,,,748.49,,,,,,15,Wed,,,0,,,,,,,sent,wtalerts http 200
+1791385305_D_SOLUSDT_ENTER_SHORT,2026-10-07T15:01:45Z,D,SOLUSDT,ENTER_SHORT,,,,-1,,1000,,,,,,15,Wed,,,0,,,,,,,sent,wtalerts http 200
