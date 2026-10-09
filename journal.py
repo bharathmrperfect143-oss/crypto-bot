@@ -311,77 +311,95 @@ def _3commas_api_get(path):
         return json.loads(r.read().decode())
 
 
+# Closed-deal status values from the v2 docs (trade.3commas.io/docs/rest-api/
+# get-strategies-live, screenshot 10 Oct 2026). "entered" is active; everything
+# else below is a closed state. v1 of this function only handled "exited" which
+# does NOT exist in v2 - that was the silent-empty bug.
+_CLOSED_STATUSES = frozenset({
+    "completed", "failed", "canceled", "cancelled", "panic_exited",
+})
+
+
 def _flatten_live_strategies_to_deals(live_resp):
     """Take a /open_api/strategies/live response and emit one deal-shaped
-    dict per bot's profileStrategies entry whose status is "exited".
+    dict per CLOSED bot entry.
 
-    Why this exists: 3Commas v2 has NO standalone /open_api/deals endpoint
-    (it returns 404 on /open_api/deals and /open_api/deals/finished).
-    Closed deals are returned INSIDE the strategies/live payload, embedded
-    inside each bot's profileStrategies array. When a position closes,
-    the bot stays in "live" but that entry flips from status="entered" to
-    status="exited" with exitPrice populated. So the data we need is
-    always reachable - just through the wrong-named endpoint.
+    v2 has NO /open_api/deals endpoint. Closed deals come back inside
+    /open_api/strategies/live, with a `statuses` query param that filters
+    to: new, entered, completed, canceled, cancelling, panic_exited,
+    panic_exiting, unlinked, failed. "entered" means open. The rest of
+    those are closed states (verified against the user's own 3Commas
+    History tab 10 Oct 2026, 13 closed positions visible).
 
-    The output shape is what collect_deals() and _parse_bot_name() already
-    expect: id, pair, entry_price, exit_price, created_at, closed_at,
-    profit_percentage, profit_usdt, signalBot (with .name). Field
-    extraction tries multiple possible v2 aliases because the v2 docs
-    are not all enumerated in one place.
+    Caller should pass ?statuses=completed,failed,canceled,panic_exited
+    to get only closed deals. This function ALSO filters transform-side
+    against _CLOSED_STATUSES, so even if 3Commas ignores the query param
+    and returns everything, only closed records are emitted.
 
-    KNOWN UNVERIFIED: this user has 0 closed deals on 3Commas as of
-    6 Oct 2026. The status="exited" branch in profileStrategies has
-    never been observed in production against this codebase. The shape
-    is inferred from the active-bot response + v2 schema guesses. The
-    loud-error behaviour is unchanged, so the first time this fires
-    wrong, the collector raises immediately.
+    Field-name guesses (closedAt, profitLossUsdt) are belt-and-suspenders
+    aliases - the v2 docs don't enumerate them, but the field names
+    used in the active response (entryPrice, exitPrice, profitLoss)
+    match the v1 convention. Worst case, fields end up blank and
+    collect_deals matches the row but the user sees no P/L until the
+    next closed deal exposes the real names.
     """
     out = []
     if not isinstance(live_resp, list):
         live_resp = (live_resp or {}).get("data", []) if isinstance(live_resp, dict) else []
+    n_total = 0
     for bot in live_resp:
         if not isinstance(bot, dict):
             continue
         signal_bot = bot.get("signalBot") or {}
+        # The live endpoint shape: each bot has ONE active deal under
+        # profileStrategies[]. For closed deals the same shape applies
+        # (we just see different status values).
         profiles = bot.get("profileStrategies") or []
         for ps in profiles:
             if not isinstance(ps, dict):
                 continue
+            n_total += 1
             status = (ps.get("status") or "").lower()
-            if status != "exited":
+            if status not in _CLOSED_STATUSES:
                 continue
             entry_ts = (ps.get("enteredAt") or ps.get("createdAt")
                         or ps.get("created_at") or "")
             close_ts = (ps.get("closedAt") or ps.get("updatedAt")
                         or ps.get("finished_at") or entry_ts)
-            # profitLoss can be a number or a percentage depending on the
-            # account setup; on Binance Futures the trade path exposes
-            # it as the percentage directly. The journal expects percent.
-            pnl_pct = ps.get("profitLoss") or ps.get("profit_loss")                       or ps.get("profitPercentage") or ps.get("profit_percentage") or ""
+            pnl_pct = (ps.get("profitLoss") or ps.get("profit_loss")
+                       or ps.get("profitPercentage") or ps.get("profit_percentage") or "")
             pnl_usdt = (ps.get("profitLossUsdt") or ps.get("profit_usdt")
                         or ps.get("profitUsd") or ps.get("profit") or "")
             deal = {
-                    "id":                ps.get("id") or ps.get("profileStrategyId") or "",
-                    "type":              "Deal",
-                    "pair":              bot.get("pair") or "",
-                    "amount":            ps.get("amount") or "",
-                    "base_order_volume": "",
+                    "id":                 ps.get("id") or ps.get("profileStrategyId") or "",
+                    "type":               "Deal",
+                    "pair":               bot.get("pair") or "",
+                    "amount":             ps.get("amount") or "",
+                    "base_order_volume":  "",
                     "safety_order_volume": "",
-                    "created_at":        entry_ts,
-                    "activated_at":      entry_ts,
-                    "closed_at":         close_ts,
-                    "finished_at":       close_ts,
-                    "entry_price":       ps.get("entryPrice") or ps.get("entry_price") or "",
-                    "exit_price":        ps.get("exitPrice") or ps.get("exit_price") or "",
-                    "close_price":       ps.get("exitPrice") or ps.get("exit_price") or "",
-                    "base_order_price":  ps.get("entryPrice") or "",
+                    "created_at":         entry_ts,
+                    "activated_at":       entry_ts,
+                    "closed_at":          close_ts,
+                    "finished_at":        close_ts,
+                    "entry_price":        ps.get("entryPrice") or ps.get("entry_price") or "",
+                    "exit_price":         ps.get("exitPrice") or ps.get("exit_price") or "",
+                    "close_price":        ps.get("exitPrice") or ps.get("exit_price") or "",
+                    "base_order_price":   ps.get("entryPrice") or "",
                     "profit_percentage":  pnl_pct,
                     "profit_usdt":        pnl_usdt,
                     "profit":             pnl_usdt,
-                    "signalBot":         signal_bot,
+                    "signalBot":          signal_bot,
                 }
             if deal["id"]:
                 out.append(deal)
+    # BREADCRUMB: always print what we saw vs what we emitted, so silent-
+    # empty becomes visible-empty in the cron log. If 3Commas ever changes
+    # the response shape again, this line tells you immediately whether the
+    # endpoint returned 0 records or returned N records that all filtered
+    # out.
+    if n_total > 0 or not out:
+        print(f"journal: live endpoint returned {n_total} deal records, "
+              f"{len(out)} matched closed-status filter")
     return out
 
 
@@ -395,26 +413,31 @@ def fetch_closed_deals(scope="completed", limit=100):
       entry_price, exit_price, bot_name (in signalBot.name),
       signalBot.id, created_at
 
-    v2 has NO /open_api/deals endpoint. Closed deals live inside the
-    strategies/live response under each bot's profileStrategies[] array
-    (entries with status="exited"). This function probes three
-    candidates in order: the documented-but-dead /open_api/deals,
-    /open_api/deals/finished (also dead), and finally the actually-
-    working /open_api/strategies/live. The third candidate's response
-    is transformed via _flatten_live_strategies_to_deals() into the
-    same shape the first two would have produced.
+    v2 has NO /open_api/deals endpoint. Closed deals come back inside
+    /open_api/strategies/live when you pass ?statuses=completed,failed,
+    canceled,panic_exited (the v2 docs explicitly list these statuses -
+    verified 10 Oct 2026 from the user's own 3Commas docs page).
+    The transform-side filter in _flatten_live_strategies_to_deals is
+    defence-in-depth in case 3Commas ignores the query param.
+
+    This function probes three candidates in order:
+      1. /open_api/deals?scope=completed (legacy v1, 404s)
+      2. /open_api/deals/finished (legacy v1, 404s)
+      3. /open_api/strategies/live?statuses=completed,failed,... (works)
     """
     out = []
     offset = 0
     page_size = min(limit, 100)
+    # status filter for the v2 live endpoint. The v1 "scope" param is
+    # retained on the dead legacy paths in case they ever come back.
+    closed_statuses = "completed,failed,canceled,panic_exited"
     candidates = [
         f"/open_api/deals?limit={page_size}&offset={offset}&scope={scope}",
         f"/open_api/deals/finished?limit={page_size}&offset={offset}",
-        # Third candidate: the working endpoint. No offset/offset
-        # pagination here - the live endpoint returns ALL live bots in
-        # one shot, and closed deals are a subset of those bots'
-        # profileStrategies entries. We only call this once.
-        "/open_api/strategies/live",
+        # Third candidate: the working endpoint, filtered server-side
+        # to closed statuses. If the filter is ignored, the transform
+        # filters client-side too.
+        f"/open_api/strategies/live?statuses={closed_statuses}&limit=100",
     ]
     used_endpoint = None
     last_err = None
@@ -442,9 +465,9 @@ def fetch_closed_deals(scope="completed", limit=100):
             f"works - is expected to return a transformable result."
         ) from last_err
 
-    if used_endpoint == "/open_api/strategies/live":
+    if used_endpoint and used_endpoint.startswith("/open_api/strategies/live"):
         # Transform the bot-list response into deal-shaped records.
-        # Only status="exited" entries are emitted.
+        # Only closed-status entries are emitted.
         out = _flatten_live_strategies_to_deals(data)
     else:
         # Legacy path: deals endpoint returned a flat list.
@@ -453,21 +476,26 @@ def fetch_closed_deals(scope="completed", limit=100):
         out.extend(data)
 
     if not out:
-        # ZERO results is a real signal that needs to be visible. If
-        # the live endpoint correctly returns 4 bots but no
-        # status="exited" entries, that means there are no closed deals
-        # YET - the journal collector should treat that as "nothing to
-        # do this run" rather than a failure. So we do NOT raise here
-        # when the live endpoint was the source and it succeeded.
-        if used_endpoint != "/open_api/strategies/live":
+        # ZERO results: must distinguish "no closed deals yet" (legit)
+        # from "endpoint answered but shape wrong" (silent bug). If the
+        # live endpoint was the source, an empty result is legitimate
+        # for a paper-trading account that has not closed any positions
+        # yet. The transform-side filter and the breadcrumb log line
+        # ensure we at least see the call in cron logs.
+        if used_endpoint and used_endpoint.startswith("/open_api/strategies/live"):
+            # Live endpoint succeeded but produced 0 closed deals. Quiet
+            # success - the breadcrumb inside _flatten_live_strategies_to_deals
+            # already printed how many records were seen.
+            pass
+        else:
+            # Legacy deals endpoint returned empty after succeeding. That
+            # is suspicious (would never happen if v1 path actually existed).
             raise RuntimeError(
                 "3Commas deals endpoint answered successfully but "
                 "returned ZERO deals. That is a real result but must "
                 "not be silently indistinguishable from a broken "
                 "endpoint."
             )
-        # else: live endpoint returned no exited profiles. Genuine.
-        # Quiet success, return the empty list.
 
     return out
 
