@@ -370,6 +370,20 @@ def _num(v):
         return None
 
 
+def _price_pnl(action, entry, exit_, amount):
+    """Gross P/L from entry/exit prices and side (fees excluded).
+    The live 3Commas profitLoss field is not in USDT units (observed
+    ~10,000x a $1000 position's real move on 2026-10-10), so P/L is derived
+    from prices. Returns (pnl_pct, pnl_usdt) or ("", "")."""
+    e, x, a = _num(entry), _num(exit_), _num(amount)
+    if not e or x is None:
+        return ("", "")
+    side = -1.0 if "SHORT" in str(action).upper() else 1.0
+    pct = side * (x - e) / e * 100.0
+    usd = round(a * pct / 100.0, 4) if a else ""
+    return (round(pct, 4), usd)
+
+
 def _bot_name_of(strat):
     """Bot name lives outside the SDK model; reconcile finds it in signalBot."""
     sb = strat.get("signalBot")
@@ -675,13 +689,38 @@ def collect_deals():
         pnl_usdt = best.get("profit_usdt")
         if pnl_usdt in ("", None):
             pnl_usdt = best.get("profit")
-        r["pnl_pct"] = pnl_pct if pnl_pct not in ("", None) else ""
-        r["pnl_usdt"] = pnl_usdt if pnl_usdt not in ("", None) else ""
+        raw_pl = pnl_usdt
+        pnl_pct, pnl_usdt = _price_pnl(r.get("action"), r["entry_price"],
+                                       r["exit_price"], r.get("amount_usdt"))
+        r["pnl_pct"] = pnl_pct
+        r["pnl_usdt"] = pnl_usdt
+        if raw_pl not in ("", None) and "api_pl_raw=" not in (r.get("notes") or ""):
+            r["notes"] = ((r.get("notes") or "") + f"; api_pl_raw={raw_pl}").lstrip("; ")
         r["time_in_trade_min"] = _holding_minutes(best)
         r["status"] = "closed"
         entries_updated += 1
 
-    if entries_updated or exits_updated:
+    # One-time/idempotent repair: rows closed by older runs carried the
+    # API's mis-scaled profitLoss. Recompute every closed entry row's P/L
+    # from its prices so all rows use one definition.
+    repaired = 0
+    for r in rows:
+        if r.get("status") != "closed":
+            continue
+        pct, usd = _price_pnl(r.get("action"), r.get("entry_price"),
+                              r.get("exit_price"), r.get("amount_usdt"))
+        if pct == "":
+            continue
+        if str(r.get("pnl_pct")) != str(pct) or str(r.get("pnl_usdt")) != str(usd):
+            old_pl = r.get("pnl_usdt")
+            if old_pl not in ("", None) and "api_pl_raw=" not in (r.get("notes") or ""):
+                r["notes"] = ((r.get("notes") or "") + f"; api_pl_raw={old_pl}").lstrip("; ")
+            r["pnl_pct"], r["pnl_usdt"] = pct, usd
+            repaired += 1
+    if repaired:
+        print(f"journal: recomputed P/L from prices on {repaired} rows")
+
+    if entries_updated or exits_updated or repaired:
         _write_all(rows)
     print(f"journal: updated {entries_updated} entry rows (with P/L) "
           f"and {exits_updated} exit rows (reference only)")
