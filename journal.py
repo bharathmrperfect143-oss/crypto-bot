@@ -311,193 +311,178 @@ def _3commas_api_get(path):
         return json.loads(r.read().decode())
 
 
-# Closed-deal status values from the v2 docs (trade.3commas.io/docs/rest-api/
-# get-strategies-live, screenshot 10 Oct 2026). "entered" is active; everything
-# else below is a closed state. v1 of this function only handled "exited" which
-# does NOT exist in v2 - that was the silent-empty bug.
+# ---------------------------------------------------------------------------
+# v1.2 (2026-10-10, Hark): closed deals come from GET /open_api/strategies/history
+# Source of truth (read, not guessed):
+#   - docs: trade.3commas.io/docs/rest-api/get-strategies-history
+#     "Returns historical trading strategies limited to the most recent
+#      3 months ... Cabinet Positions page ... sorted by updatedAt DESC"
+#   - official SDK github.com/3commas-io/trade-3commas-sdk:
+#       getStrategiesHistory(params) -> PaginatedResponse<Strategy>
+#       PaginatedResponse = {"pagination": {page, limit, total, pages}, "items": [...]}
+#       query params: page, limit, exchanges, apiProfiles, statuses
+#       Strategy: strategyId, status, pair, createdAt, updatedAt, enteredAt,
+#                 totalProfitLoss, totalEntryCost, profileStrategies[]
+#       ProfileStrategy: profileStrategyId, status, entryPrice, exitPrice,
+#                 cost, totalExitCost, profitLoss, exitPnl
+# Bugs fixed vs v1.1:
+#   1. /strategies/live only returns ACTIVE strategies -> closed deals never came back.
+#   2. response is {"pagination","items"}, v1.1 read list or "data" -> always [].
+#   3. no pagination -> anything past the first page lost.
+#   4. profitLoss (a money amount in the SDK) was written into pnl_pct.
+# ---------------------------------------------------------------------------
 _CLOSED_STATUSES = frozenset({
     "completed", "failed", "canceled", "cancelled", "panic_exited",
 })
+HISTORY_PATH = "/open_api/strategies/history"
+HISTORY_PAGE_LIMIT = 100
+HISTORY_MAX_PAGES = 20          # 2000 strategies; weight 10 per call, limit 1200/period
 
 
-def _flatten_live_strategies_to_deals(live_resp):
-    """Take a /open_api/strategies/live response and emit one deal-shaped
-    dict per CLOSED bot entry.
+def _items_of(resp):
+    """Return (items, pages) from a PaginatedResponse. Tolerates a bare list."""
+    # Fail LOUD on anything that is not a real page (3 Oct silent-empty
+    # bug class): a null/str body or a dict with no item list is an API
+    # problem, not "0 closed deals". A genuine empty page is {"items": []}.
+    if isinstance(resp, list):
+        return resp, 1
+    if not isinstance(resp, dict):
+        raise RuntimeError(f"3Commas history: unexpected body type {type(resp).__name__}")
+    items = resp.get("items")
+    if not isinstance(items, list):
+        items = resp.get("data")
+    if not isinstance(items, list):
+        raise RuntimeError(f"3Commas history: no item list, keys={sorted(resp)[:20]}")
+    pag = resp.get("pagination") or {}
+    try:
+        pages = int(pag.get("pages") or 1)
+    except (TypeError, ValueError):
+        pages = 1
+    return items, max(pages, 1)
 
-    v2 has NO /open_api/deals endpoint. Closed deals come back inside
-    /open_api/strategies/live, with a `statuses` query param that filters
-    to: new, entered, completed, canceled, cancelling, panic_exited,
-    panic_exiting, unlinked, failed. "entered" means open. The rest of
-    those are closed states (verified against the user's own 3Commas
-    History tab 10 Oct 2026, 13 closed positions visible).
 
-    Caller should pass ?statuses=completed,failed,canceled,panic_exited
-    to get only closed deals. This function ALSO filters transform-side
-    against _CLOSED_STATUSES, so even if 3Commas ignores the query param
-    and returns everything, only closed records are emitted.
+def _num(v):
+    try:
+        if v in (None, ""):
+            return None
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
-    Field-name guesses (closedAt, profitLossUsdt) are belt-and-suspenders
-    aliases - the v2 docs don't enumerate them, but the field names
-    used in the active response (entryPrice, exitPrice, profitLoss)
-    match the v1 convention. Worst case, fields end up blank and
-    collect_deals matches the row but the user sees no P/L until the
-    next closed deal exposes the real names.
-    """
+
+def _bot_name_of(strat):
+    """Bot name lives outside the SDK model; reconcile finds it in signalBot."""
+    sb = strat.get("signalBot")
+    if isinstance(sb, dict):
+        for f in ("name", "title", "botName"):
+            if sb.get(f):
+                return str(sb[f])
+    for f in ("name", "botName", "bot_name", "title"):
+        if strat.get(f):
+            return str(strat[f])
+    return ""
+
+
+def _flatten_strategies_to_deals(items):
+    """One deal-shaped dict per CLOSED profileStrategy of each strategy."""
     out = []
-    if not isinstance(live_resp, list):
-        live_resp = (live_resp or {}).get("data", []) if isinstance(live_resp, dict) else []
-    n_total = 0
-    for bot in live_resp:
-        if not isinstance(bot, dict):
+    n_ps = 0
+    for strat in items:
+        if not isinstance(strat, dict):
             continue
-        signal_bot = bot.get("signalBot") or {}
-        # The live endpoint shape: each bot has ONE active deal under
-        # profileStrategies[]. For closed deals the same shape applies
-        # (we just see different status values).
-        profiles = bot.get("profileStrategies") or []
+        s_status = str(strat.get("status") or "").lower()
+        profiles = strat.get("profileStrategies")
+        if isinstance(profiles, dict):          # defensive: never seen, SDK says list
+            profiles = [profiles]
+        if not isinstance(profiles, list) or not profiles:
+            profiles = [{}]                      # fall back to strategy-level totals
+        name = _bot_name_of(strat)
+        entry_ts = strat.get("enteredAt") or strat.get("createdAt") or ""
+        # No closedAt in v2. History is the closed set sorted by updatedAt,
+        # so updatedAt is the best available close time.
+        close_ts = strat.get("updatedAt") or entry_ts
         for ps in profiles:
             if not isinstance(ps, dict):
                 continue
-            n_total += 1
-            status = (ps.get("status") or "").lower()
+            n_ps += 1
+            status = str(ps.get("status") or s_status).lower()
             if status not in _CLOSED_STATUSES:
                 continue
-            entry_ts = (ps.get("enteredAt") or ps.get("createdAt")
-                        or ps.get("created_at") or "")
-            close_ts = (ps.get("closedAt") or ps.get("updatedAt")
-                        or ps.get("finished_at") or entry_ts)
-            pnl_pct = (ps.get("profitLoss") or ps.get("profit_loss")
-                       or ps.get("profitPercentage") or ps.get("profit_percentage") or "")
-            pnl_usdt = (ps.get("profitLossUsdt") or ps.get("profit_usdt")
-                        or ps.get("profitUsd") or ps.get("profit") or "")
-            deal = {
-                    "id":                 ps.get("id") or ps.get("profileStrategyId") or "",
-                    "type":               "Deal",
-                    "pair":               bot.get("pair") or "",
-                    "amount":             ps.get("amount") or "",
-                    "base_order_volume":  "",
-                    "safety_order_volume": "",
-                    "created_at":         entry_ts,
-                    "activated_at":       entry_ts,
-                    "closed_at":          close_ts,
-                    "finished_at":        close_ts,
-                    "entry_price":        ps.get("entryPrice") or ps.get("entry_price") or "",
-                    "exit_price":         ps.get("exitPrice") or ps.get("exit_price") or "",
-                    "close_price":        ps.get("exitPrice") or ps.get("exit_price") or "",
-                    "base_order_price":   ps.get("entryPrice") or "",
-                    "profit_percentage":  pnl_pct,
-                    "profit_usdt":        pnl_usdt,
-                    "profit":             pnl_usdt,
-                    "signalBot":          signal_bot,
-                }
-            if deal["id"]:
-                out.append(deal)
-    # BREADCRUMB: always print what we saw vs what we emitted, so silent-
-    # empty becomes visible-empty in the cron log. If 3Commas ever changes
-    # the response shape again, this line tells you immediately whether the
-    # endpoint returned 0 records or returned N records that all filtered
-    # out.
-    if n_total > 0 or not out:
-        print(f"journal: live endpoint returned {n_total} deal records, "
-              f"{len(out)} matched closed-status filter")
+            if status in ("canceled", "cancelled", "failed") and ps.get("entryPrice") in (None, "", 0):
+                continue                         # never filled -> not a trade
+            pnl_usdt = _num(ps.get("profitLoss"))
+            if pnl_usdt is None:
+                pnl_usdt = _num(ps.get("exitPnl"))
+            if pnl_usdt is None and len(profiles) == 1:
+                pnl_usdt = _num(strat.get("totalProfitLoss"))
+            cost = _num(ps.get("cost"))
+            if cost is None and len(profiles) == 1:
+                cost = _num(strat.get("totalEntryCost"))
+            pnl_pct = ""
+            if pnl_usdt is not None and cost:
+                pnl_pct = round(pnl_usdt / cost * 100.0, 4)
+            did = ps.get("profileStrategyId") or strat.get("strategyId") or ""
+            if not did:
+                continue
+            out.append({
+                "id":                str(did),
+                "strategyId":        strat.get("strategyId") or "",
+                "type":              "Deal",
+                "status":            status,
+                "pair":              strat.get("pair") or "",
+                "amount":            ps.get("amount") or "",
+                "created_at":        entry_ts,
+                "activated_at":      entry_ts,
+                "closed_at":         close_ts,
+                "finished_at":       close_ts,
+                "entry_price":       ps.get("entryPrice") if ps.get("entryPrice") is not None else "",
+                "exit_price":        ps.get("exitPrice") if ps.get("exitPrice") is not None else "",
+                "close_price":       ps.get("exitPrice") if ps.get("exitPrice") is not None else "",
+                "base_order_price":  ps.get("entryPrice") if ps.get("entryPrice") is not None else "",
+                "profit_percentage": pnl_pct,
+                "profit_usdt":       round(pnl_usdt, 6) if pnl_usdt is not None else "",
+                "profit":            round(pnl_usdt, 6) if pnl_usdt is not None else "",
+                "signalBot":         {"name": name},
+            })
+    print(f"journal: history returned {len(items)} strategies / {n_ps} profile "
+          f"records, {len(out)} closed deals emitted")
     return out
 
 
-def fetch_closed_deals(scope="completed", limit=100):
-    """Fetch closed/completed deals from 3Commas v2 API.
+def fetch_closed_deals(scope="completed", limit=None):
+    """All closed deals from GET /open_api/strategies/history (paginated).
 
-    scope: "completed" (default), "failed", or "all" for both
-    Returns list of deal dicts. Each deal has at minimum:
-      id, type, pair, amount, base_order_volume, safety_order_volume,
-      finished_at, closed_at, profit_percentage, profit_usdt,
-      entry_price, exit_price, bot_name (in signalBot.name),
-      signalBot.id, created_at
-
-    v2 has NO /open_api/deals endpoint. Closed deals come back inside
-    /open_api/strategies/live when you pass ?statuses=completed,failed,
-    canceled,panic_exited (the v2 docs explicitly list these statuses -
-    verified 10 Oct 2026 from the user's own 3Commas docs page).
-    The transform-side filter in _flatten_live_strategies_to_deals is
-    defence-in-depth in case 3Commas ignores the query param.
-
-    This function probes three candidates in order:
-      1. /open_api/deals?scope=completed (legacy v1, 404s)
-      2. /open_api/deals/finished (legacy v1, 404s)
-      3. /open_api/strategies/live?statuses=completed,failed,... (works)
+    `scope`/`limit` kept for call-site compatibility; status filtering is
+    done client-side against _CLOSED_STATUSES so an unknown server-side
+    `statuses` value can never empty the result. Raises loudly on API error.
     """
-    out = []
-    offset = 0
-    page_size = min(limit, 100)
-    # status filter for the v2 live endpoint. The v1 "scope" param is
-    # retained on the dead legacy paths in case they ever come back.
-    closed_statuses = "completed,failed,canceled,panic_exited"
-    candidates = [
-        f"/open_api/deals?limit={page_size}&offset={offset}&scope={scope}",
-        f"/open_api/deals/finished?limit={page_size}&offset={offset}",
-        # Third candidate: the working endpoint, filtered server-side
-        # to closed statuses. If the filter is ignored, the transform
-        # filters client-side too.
-        f"/open_api/strategies/live?statuses={closed_statuses}&limit=100",
-    ]
-    used_endpoint = None
-    last_err = None
-    data = None
-    for path in candidates:
+    items_all = []
+    page = 1
+    pages = 1
+    while page <= pages and page <= HISTORY_MAX_PAGES:
+        path = f"{HISTORY_PATH}?page={page}&limit={HISTORY_PAGE_LIMIT}"
         try:
-            data = _3commas_api_get(path)
-            used_endpoint = path
-            break
-        except urllib.error.HTTPError as e:
-            last_err = e
-            continue
+            resp = _3commas_api_get(path)
         except Exception as e:
-            last_err = e
-            continue
-
-    if data is None:
-        # LOUD-ERROR FIX (3 Oct 2026, M3): do not return an empty list
-        # silently. A permanently-wrong endpoint used to look exactly
-        # like "no trades yet" forever.
-        raise RuntimeError(
-            f"3Commas deals endpoints not usable. Tried: {candidates}. "
-            f"Last error: {last_err!r}. The third candidate "
-            f"/open_api/strategies/live - which the reconciler confirms "
-            f"works - is expected to return a transformable result."
-        ) from last_err
-
-    if used_endpoint and used_endpoint.startswith("/open_api/strategies/live"):
-        # Transform the bot-list response into deal-shaped records.
-        # Only closed-status entries are emitted.
-        out = _flatten_live_strategies_to_deals(data)
-    else:
-        # Legacy path: deals endpoint returned a flat list.
-        if not isinstance(data, list):
-            data = data.get("data", []) if isinstance(data, dict) else []
-        out.extend(data)
-
-    if not out:
-        # ZERO results: must distinguish "no closed deals yet" (legit)
-        # from "endpoint answered but shape wrong" (silent bug). If the
-        # live endpoint was the source, an empty result is legitimate
-        # for a paper-trading account that has not closed any positions
-        # yet. The transform-side filter and the breadcrumb log line
-        # ensure we at least see the call in cron logs.
-        if used_endpoint and used_endpoint.startswith("/open_api/strategies/live"):
-            # Live endpoint succeeded but produced 0 closed deals. Quiet
-            # success - the breadcrumb inside _flatten_live_strategies_to_deals
-            # already printed how many records were seen.
-            pass
-        else:
-            # Legacy deals endpoint returned empty after succeeding. That
-            # is suspicious (would never happen if v1 path actually existed).
-            raise RuntimeError(
-                "3Commas deals endpoint answered successfully but "
-                "returned ZERO deals. That is a real result but must "
-                "not be silently indistinguishable from a broken "
-                "endpoint."
-            )
-
-    return out
+            raise RuntimeError(f"3Commas history fetch failed on page {page}: {e!r}") from e
+        items, pages = _items_of(resp)
+        if page == 1 and items:
+            # shape breadcrumb: KEYS only, never values (public Actions logs)
+            first = items[0] if isinstance(items[0], dict) else {}
+            ps0 = (first.get("profileStrategies") or [{}])
+            ps0 = ps0[0] if isinstance(ps0, list) and ps0 and isinstance(ps0[0], dict) else {}
+            print(f"journal: history keys strategy={sorted(first)[:40]} "
+                  f"profile={sorted(ps0)[:40]}")
+        items_all.extend(items)
+        if not items and page == 1:
+            break                     # genuinely no history at all
+        # An empty MIDDLE page does not end the scan: keep reading up to
+        # pagination.pages (capped by HISTORY_MAX_PAGES) so later pages
+        # are never dropped silently.
+        page += 1
+    if pages > HISTORY_MAX_PAGES:
+        print(f"journal: WARN history has {pages} pages, read {HISTORY_MAX_PAGES}")
+    return _flatten_strategies_to_deals(items_all)
 
 
 # ---------------------------------------------------------------- collector
@@ -518,7 +503,15 @@ BOT_NAME_TO_STRATEGY = {
 def _parse_bot_name(deal):
     sig_bot = deal.get("signalBot") or {}
     name = sig_bot.get("name", "") if isinstance(sig_bot, dict) else ""
-    return BOT_NAME_TO_STRATEGY.get(name)
+    hit = BOT_NAME_TO_STRATEGY.get(name)
+    if hit:
+        return hit
+    # fallback: prefix match like reconcile (e.g. "A-SOL" in a renamed bot)
+    low = name.lower()
+    for full, info in BOT_NAME_TO_STRATEGY.items():
+        if full.split(" - ")[0].lower() in low:
+            return info
+    return None
 
 
 def _holding_minutes(deal):
