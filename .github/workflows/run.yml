@@ -21,7 +21,20 @@ jobs:
   run:
     runs-on: ubuntu-latest
     steps:
+      # FIX 2026-10-09: check out the branch TIP when the job starts, not the
+      # event SHA frozen when the run was queued. Then re-sync explicitly, so a
+      # run queued behind another (concurrency group) never evaluates stale
+      # state.json and re-sends an hour's signal.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Sync to latest branch tip
+        run: |
+          git fetch origin "${GITHUB_REF_NAME}"
+          git reset --hard "origin/${GITHUB_REF_NAME}"
+          echo "running on $(git rev-parse --short HEAD)"
 
       - uses: actions/setup-python@v5
         with:
@@ -100,11 +113,24 @@ jobs:
             echo "nothing changed"
           else
             git commit -m "state $(date -u '+%Y-%m-%d %H:%M')Z"
+            # FIX 2026-10-09: fetch + rebase before every push attempt, abort a
+            # half-done rebase, and FAIL the job if state could not be pushed
+            # (previously the step exited 0 via `sleep` and the commit was lost).
+            pushed=0
             for i in 1 2 3; do
-              git pull --rebase --autostash && git push && break
+              if git fetch origin "${GITHUB_REF_NAME}" \
+                 && git rebase "origin/${GITHUB_REF_NAME}" \
+                 && git push origin "HEAD:${GITHUB_REF_NAME}"; then
+                pushed=1; break
+              fi
+              git rebase --abort 2>/dev/null || true
               echo "push retry $i"
               sleep 5
             done
+            if [ "$pushed" != 1 ]; then
+              echo "::error::state push failed after 3 tries (conflict) - state.json NOT persisted; next run may re-evaluate this hour"
+              exit 1
+            fi
           fi
 
       - name: Heartbeat (success)
