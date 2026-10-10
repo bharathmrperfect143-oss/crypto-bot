@@ -1,9 +1,9 @@
 signal_id,ts_signal_utc,strategy,symbol,action,brick_value,fast_dir,slow_dir,d_dir,vol_pct,amount_usdt,btc_price,btc_change_1h_pct,btc_change_4h_pct,btc_change_24h_pct,funding_rate_pct,hour_of_day_utc,day_of_week_utc,wtalerts_status,wtalerts_http,verify_attempt,deal_id,entry_price,exit_price,pnl_pct,pnl_usdt,time_in_trade_min,status,notes
-1791130162_D_XRPUSDT_ENTER_SHORT,2026-10-04T16:09:22Z,D,XRPUSDT,ENTER_SHORT,,,,,,1000,,,,,,16,Sun,,,0,6ac27a337ad6f89737b66926,1.5029,1.5108,-6058.7203,-60589.0,1072.2,closed,wtalerts http 200
-1791194496_D_XRPUSDT_ENTER_LONG,2026-10-05T10:01:36Z,D,XRPUSDT,ENTER_LONG,,,,1,,1000,,,,,,10,Mon,,,0,6ac375807ad6f89737b77a13,1.5108,1.444,-44997.0648,-449902.0,3059.9,closed,wtalerts http 200
+1791130162_D_XRPUSDT_ENTER_SHORT,2026-10-04T16:09:22Z,D,XRPUSDT,ENTER_SHORT,,,,,,1000,,,,,,16,Sun,,,0,6ac27a337ad6f89737b66926,1.5029,1.5108,-0.5257,-5.2565,1072.2,closed,wtalerts http 200; api_pl_raw=-60589.0
+1791194496_D_XRPUSDT_ENTER_LONG,2026-10-05T10:01:36Z,D,XRPUSDT,ENTER_LONG,,,,1,,1000,,,,,,10,Mon,,,0,6ac375807ad6f89737b77a13,1.5108,1.444,-4.4215,-44.215,3059.9,closed,wtalerts http 200; api_pl_raw=-449902.0
 1791367300_B_XRPUSDT_EXIT_ALL,2026-10-07T10:01:40Z,B,XRPUSDT,EXIT_ALL,,,,,,1000,,,,,,10,Wed,,,0,6aae7ad4bae76b16a06c6c77,,1.4541,,,25794.9,exited,wtalerts http 200
 1791378100_D_XRPUSDT_ENTER_SHORT,2026-10-07T13:01:40Z,D,XRPUSDT,ENTER_SHORT,,,,-1,,1000,,,,,,13,Wed,,,0,,,,,,,sent,wtalerts http 200
-1791385301_C_SOLUSDT_ENTER_LONG,2026-10-07T15:01:41Z,C,SOLUSDT,ENTER_LONG,,,,,,748.49,,,,,,15,Wed,,,0,6ac65ed545b7eabd39da102d,115.63,106.42,-80418.261,-601630.0,1619.6,closed,wtalerts http 200
+1791385301_C_SOLUSDT_ENTER_LONG,2026-10-07T15:01:41Z,C,SOLUSDT,ENTER_LONG,,,,,,748.49,,,,,,15,Wed,,,0,6ac65ed545b7eabd39da102d,115.63,106.42,-7.9651,-59.6177,1619.6,closed,wtalerts http 200; api_pl_raw=-601630.0
 1791385305_D_SOLUSDT_ENTER_SHORT,2026-10-07T15:01:45Z,D,SOLUSDT,ENTER_SHORT,,,,-1,,1000,,,,,,15,Wed,,,0,,,,,,,sent,wtalerts http 200
 1791475284_B_SOLUSDT_EXIT_ALL,2026-10-08T16:01:24Z,B,SOLUSDT,EXIT_ALL,,,,,,1000,,,,,,16,Thu,,,0,6aad48792df88e102056587b,,108.54,,,28901.7,exited,wtalerts http 200
 1791482481_C_SOLUSDT_EXIT_ALL,2026-10-08T18:01:21Z,C,SOLUSDT,EXIT_ALL,,,,,,1000,,,,,,18,Thu,,,0,6ac65ed545b7eabd39da102d,,106.42,,,1619.6,exited,wtalerts http 200
