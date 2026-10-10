@@ -79,6 +79,7 @@ import hmac
 import json
 import math
 import os
+import re
 import statistics
 import sys
 import time
@@ -360,6 +361,60 @@ def _journal_open():
     return new
 
 
+def _market_ctx(symbol):
+    """BTC price/changes + symbol funding for the journal row. Cached per
+    run (one fetch at most), short timeouts, every failure -> blanks.
+    Spot uses data-api.binance.vision (works from US runners, same as
+    klines). Funding uses fapi.binance.com, which may 451 from US
+    runners; then funding just stays blank."""
+    if symbol in _MKT_CACHE:
+        return _MKT_CACHE[symbol]
+    ctx = {"btc_price": "", "btc_change_1h_pct": "", "btc_change_4h_pct": "",
+           "btc_change_24h_pct": "", "funding_rate_pct": ""}
+    if "btc" not in _MKT_CACHE:
+        btc = {}
+        try:
+            url = ("https://data-api.binance.vision/api/v3/klines"
+                   "?symbol=BTCUSDT&interval=1h&limit=25")
+            req = urllib.request.Request(url, headers={"User-Agent": "renko-bot"})
+            with urllib.request.urlopen(req, timeout=5) as r:
+                closes = [float(k[4]) for k in json.loads(r.read().decode())]
+            if len(closes) >= 25:
+                btc = {"btc_price": closes[-1],
+                       "btc_change_1h_pct": round((closes[-1] / closes[-2] - 1) * 100, 3),
+                       "btc_change_4h_pct": round((closes[-1] / closes[-5] - 1) * 100, 3),
+                       "btc_change_24h_pct": round((closes[-1] / closes[-25] - 1) * 100, 3)}
+        except Exception as e:
+            log(f"  journal: BTC context unavailable ({type(e).__name__})")
+        _MKT_CACHE["btc"] = btc
+    ctx.update(_MKT_CACHE["btc"])
+    try:
+        url = ("https://fapi.binance.com/fapi/v1/fundingRate"
+               f"?symbol={symbol}&limit=1")
+        req = urllib.request.Request(url, headers={"User-Agent": "renko-bot"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            data = json.loads(r.read().decode())
+        if isinstance(data, list) and data and data[-1].get("fundingRate") is not None:
+            ctx["funding_rate_pct"] = round(float(data[-1]["fundingRate"]) * 100, 5)
+    except Exception as e:
+        log(f"  journal: funding unavailable for {symbol} ({type(e).__name__})")
+    _MKT_CACHE[symbol] = ctx
+    return ctx
+
+
+def _wt_of(status, notes):
+    """wtalerts_status / wtalerts_http from what send_signal already knows."""
+    m = re.search(r"wtalerts http (\d{3})", notes or "")
+    http = int(m.group(1)) if m else ""
+    if str(notes).startswith("DRY_RUN"):
+        return "dry_run", ""
+    if http != "" and http >= 400:
+        return "http_error", http          # never "accepted" with a 4xx/5xx
+    if status == "sent":
+        return "accepted", http
+    return ("http_error" if http else "network_error"), http
+
+
 def journal_signal(strategy, symbol, label, amount, status, notes="",
                 d_dir=None):
     """Append ONE signal row. Never raises - a journal failure must not
@@ -373,6 +428,8 @@ def journal_signal(strategy, symbol, label, amount, status, notes="",
         now = int(time.time())
         signal_id = f"{now}_{strategy}_{symbol}_{action}"
         dt_utc = datetime.now(timezone.utc)
+        mk = _market_ctx(symbol)
+        wt_status, wt_http = _wt_of(status, notes)
         _journal_open()
         with open(JOURNAL_FILE, "a", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
@@ -380,12 +437,16 @@ def journal_signal(strategy, symbol, label, amount, status, notes="",
                 signal_id,
                 dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 strategy, symbol, action,
-                "", "", "", (d_dir if d_dir is not None else ""), "",
-                amount, "", "", "", "", "",  # brick/fast/slow/d_dir/vol
+                _JCTX.get("brick_value", ""), _JCTX.get("fast_dir", ""),
+                _JCTX.get("slow_dir", ""),
+                (d_dir if d_dir is not None else ""), _JCTX.get("vol_pct", ""),
+                amount, mk["btc_price"], mk["btc_change_1h_pct"],
+                mk["btc_change_4h_pct"], mk["btc_change_24h_pct"],
+                mk["funding_rate_pct"],
                 dt_utc.hour,
                 dt_utc.strftime("%a"),
-                "", "",                      # wtalerts status/http
-                0, "",                       # verify_attempt, deal_id
+                wt_status, wt_http,
+                "", "",                      # verify_attempt (not tracked), deal_id
                 "", "", "", "",              # entry/exit/pnl
                 "", status, notes,
             ])
@@ -423,10 +484,53 @@ def http_get(url, tries=3):
             time.sleep(3)
 
 
+# ---- SIGNAL DEDUP (FIX 2026-10-09) -----------------------------------
+# Defence in depth against a re-processed hour (stale checkout, job re-run)
+# firing the same webhook twice. A signal id is strategy:symbol:label:hour,
+# where hour = the open hour_bucket after this run's closes were consumed.
+# Within ONE run the same id may legitimately repeat during a multi-hour
+# catch-up, so only ids recorded by a DIFFERENT run are suppressed.
+RUN_ID = os.environ.get("GITHUB_RUN_ID") or f"local-{int(time.time())}"
+_SIG_CTX = {"state": None, "hour": None}
+# Journal-only context (2026-10-10): runners drop the values the journal
+# row should carry here (brick, fast/slow dir, vol). Read ONLY by
+# journal_signal(); never by trade logic.
+_JCTX = {}
+_MKT_CACHE = {}
+
+
+def _signal_id(strategy, symbol, label):
+    return f"{strategy}:{symbol}:{label}:{_SIG_CTX['hour']}"
+
+
+def _already_sent(sig_id):
+    state = _SIG_CTX["state"]
+    if state is None or _SIG_CTX["hour"] is None:
+        return False
+    prev = state.get("_sent", {}).get(sig_id)
+    return prev is not None and prev != RUN_ID
+
+
+def _mark_sent(sig_id):
+    state = _SIG_CTX["state"]
+    if state is None or _SIG_CTX["hour"] is None:
+        return
+    sent = state.setdefault("_sent", {})
+    sent[sig_id] = RUN_ID
+    if len(sent) > 500:                       # keep the newest 500 ids
+        for k in list(sent)[:-500]:
+            del sent[k]
+
+
 def send_signal(strategy, symbol, code, label, amount=None, d_dir=None):
     if not code:
         log(f"  !! no code configured for {label} - skipped")
         return False
+    sig_id = _signal_id(strategy, symbol, label)
+    if _already_sent(sig_id):
+        log(f"  DUP SUPPRESSED {label} - id {sig_id} already sent by run "
+            f"{_SIG_CTX['state']['_sent'][sig_id]}")
+        return True
     if amount is None:
         amount = TRADE_AMOUNTS[strategy][symbol]
     if DRY_RUN:
@@ -457,6 +561,7 @@ def send_signal(strategy, symbol, code, label, amount=None, d_dir=None):
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 log(f"  SENT {label}  amount={amount} USDT  (http {r.status})")
+                _mark_sent(sig_id)
                 journal_signal(strategy, symbol, label, amount, "sent",
                                f"wtalerts http {r.status}", d_dir=d_dir)
                 # Small courtesy delay between webhook sends. (The
@@ -648,6 +753,7 @@ def codes_for(names):
 
 def run_strategy_a(symbol, names, st, new_closes, price):
     """Strategy A - unchanged from the previous version."""
+    _JCTX.clear()
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"A/{symbol}"
 
@@ -676,6 +782,7 @@ def run_strategy_a(symbol, names, st, new_closes, price):
 
         window = bricks[-(A_BREAKOUT_N + 1):-1]
         hi, lo = max(window), min(window)
+        _JCTX["brick_value"] = brick
         pos = st["position"]
 
         if pos == 1:
@@ -721,6 +828,7 @@ def run_strategy_a(symbol, names, st, new_closes, price):
 def run_strategy_c(symbol, names, st, new_closes, price):
     """Strategy C - identical to Strategy B except position size at entry
     is volatility-targeted (Stage 1.1). See module docstring."""
+    _JCTX.clear()
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"C/{symbol}"
     keep = max(B_TEMA * 3, B_ALMA) + 40
@@ -755,6 +863,7 @@ def run_strategy_c(symbol, names, st, new_closes, price):
 
         latest = st["f_bricks"][-1]
         agree = fast_dir if fast_dir == slow_dir else 0
+        _JCTX.update(brick_value=latest, fast_dir=fast_dir, slow_dir=slow_dir)
         pos = st["position"]
 
         if pos != 0:
@@ -777,39 +886,45 @@ def run_strategy_c(symbol, names, st, new_closes, price):
                     st.update(position=0, best=0.0)
                     pos = 0
 
-        # baseline edge-trigger: only enter on a genuine change of `agree`
-        # (this dedup is what makes the bot stay flat-and-out after an exit
-        # until direction actually flips, instead of re-entering every run -
-        # isolation testing confirmed this matters a lot in strong trends).
-        # CRITICAL: prev_agree is only marked CONSUMED on a SUCCESSFUL send,
-        # so a failed first attempt is retried on the next brick (the original
-        # code set it unconditionally, silently dropping the signal).
-        if pos == 0 and agree != 0 and agree != st.get("prev_agree", 0):
+        # baseline edge-trigger (FIX 2026-10-09, prev_agree re-entry bug):
+        # prev_agree is updated on EVERY evaluated brick (original semantics,
+        # keeps C in lock-step with B); a failed entry is retried via
+        # st["pending"] while agree is unchanged, and dropped if it changes.
+        pending = st.get("pending", 0)
+        if pending and agree != pending:
+            st["pending"] = pending = 0
+        fire = (pos == 0 and agree != 0
+                and (agree != st.get("prev_agree", 0) or pending == agree))
+        if fire:
             rvol = realized_vol_annualized(st.get("price_history", []))
             amount = vol_target_size(base_amount, rvol)
             rvol_pct = rvol * 100 if rvol else 0.0
+            _JCTX["vol_pct"] = round(rvol_pct, 2)
             log(f"  {tag}: VOL-SIZING - realized vol {rvol_pct:.1f}% "
                 f"(target {VOL_TARGET * 100:.0f}%, band "
                 f"{VOL_LMIN * 100:.0f}%-{VOL_LMAX * 100:.0f}%), "
                 f"base {base_amount} USDT -> size {amount} USDT "
                 f"from {len(st.get('price_history', []))} hourly closes")
+            ok = False
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
                     f"-> size {amount} USDT")
-                if (send_signal("C", symbol, enter_long, f"{tag} ENTER-LONG", amount)
-                        and verify_entry_accepted("C", symbol)):
-                    st.update(position=1, best=latest, trades=st["trades"] + 1)
-                    st["prev_agree"] = agree
+                ok = (send_signal("C", symbol, enter_long, f"{tag} ENTER-LONG", amount)
+                      and verify_entry_accepted("C", symbol))
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}, realized vol {rvol_pct:.1f}% "
                     f"-> size {amount} USDT")
-                if (send_signal("C", symbol, enter_short, f"{tag} ENTER-SHORT", amount)
-                        and verify_entry_accepted("C", symbol)):
-                    st.update(position=-1, best=latest, trades=st["trades"] + 1)
-                    st["prev_agree"] = agree
-            # On failure: leave prev_agree untouched so the next brick retries.
+                ok = (send_signal("C", symbol, enter_short, f"{tag} ENTER-SHORT", amount)
+                      and verify_entry_accepted("C", symbol))
+            if ok:
+                st.update(position=agree, best=latest, trades=st["trades"] + 1)
+                st["pending"] = 0
+            else:
+                st["pending"] = agree
+                log(f"{tag}: entry not confirmed - will retry next brick")
+        st["prev_agree"] = agree
 
     if len(st["f_bricks"]) < need or len(st["s_bricks"]) < need:
         log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
@@ -832,6 +947,7 @@ def run_strategy_b(symbol, names, st, new_closes, price):
     """Strategy B - the ORIGINAL, UNCHANGED baseline. Fixed $1000 per
     trade, flat 8.5% trail, plain edge-trigger entry. No Stage 1 changes
     at all - this is the control group Strategy C is compared against."""
+    _JCTX.clear()
     enter_long, enter_short, exit_all = codes_for(names)
     tag = f"B/{symbol}"
     keep = max(B_TEMA * 3, B_ALMA) + 40
@@ -860,6 +976,7 @@ def run_strategy_b(symbol, names, st, new_closes, price):
 
         latest = st["f_bricks"][-1]
         agree = fast_dir if fast_dir == slow_dir else 0
+        _JCTX.update(brick_value=latest, fast_dir=fast_dir, slow_dir=slow_dir)
         pos = st["position"]
 
         if pos != 0:
@@ -882,32 +999,36 @@ def run_strategy_b(symbol, names, st, new_closes, price):
                     st.update(position=0, best=0.0)
                     pos = 0
 
-        # Edge-trigger entry: only on a genuine agree change from prev_agree.
-        # CRITICAL: prev_advance is only marked CONSUMED on a SUCCESSFUL send
-        # (the old code set it unconditionally, which silently dropped the
-        # signal after a single failed webhook attempt - if the first ENTER-
-        # LONG failed (HTTP 5xx, secret empty, etc.), the bot stayed flat
-        # even though agree stayed +1 for many subsequent bricks).
-        if pos == 0 and agree != 0 and agree != st.get("prev_agree", 0):
+        # Edge-trigger entry (FIX 2026-10-09, prev_agree re-entry bug):
+        # edge tracking and retry tracking are now SEPARATE.
+        #  - prev_agree is updated on EVERY evaluated brick, exactly like the
+        #    original live code / backtest, so a 1 -> 0 -> 1 sequence re-enters.
+        #  - a failed entry is remembered in st["pending"] and retried on the
+        #    next brick while agree stays the same; dropped if agree changes.
+        pending = st.get("pending", 0)
+        if pending and agree != pending:
+            st["pending"] = pending = 0          # direction changed -> drop stale retry
+        fire = (pos == 0 and agree != 0
+                and (agree != st.get("prev_agree", 0) or pending == agree))
+        if fire:
+            ok = False
             if agree == 1:
                 log(f"{tag}: LONG entry - both timeframes bullish, "
                     f"brick {latest:.4f}")
-                if (send_signal("B", symbol, enter_long, f"{tag} ENTER-LONG")
-                        and verify_entry_accepted("B", symbol)):
-                    st.update(position=1, best=latest, trades=st["trades"] + 1)
-                    st["prev_agree"] = agree
+                ok = (send_signal("B", symbol, enter_long, f"{tag} ENTER-LONG")
+                      and verify_entry_accepted("B", symbol))
             else:
                 log(f"{tag}: SHORT entry - both timeframes bearish, "
                     f"brick {latest:.4f}")
-                if (send_signal("B", symbol, enter_short, f"{tag} ENTER-SHORT")
-                        and verify_entry_accepted("B", symbol)):
-                    st.update(position=-1, best=latest, trades=st["trades"] + 1)
-                    st["prev_agree"] = agree
-            # On failure: leave prev_agree untouched so the next brick can retry.
-        elif pos == 0 and agree != 0 and agree == st.get("prev_agree", 0):
-            # agree stable but unprocessed (previous fire must have failed) -
-            # keep the edge-trigger alive by NOT touching prev_agree here.
-            pass
+                ok = (send_signal("B", symbol, enter_short, f"{tag} ENTER-SHORT")
+                      and verify_entry_accepted("B", symbol))
+            if ok:
+                st.update(position=agree, best=latest, trades=st["trades"] + 1)
+                st["pending"] = 0
+            else:
+                st["pending"] = agree            # retry on the next brick
+                log(f"{tag}: entry not confirmed - will retry next brick")
+        st["prev_agree"] = agree
 
     if len(st["f_bricks"]) < need or len(st["s_bricks"]) < need:
         log(f"{tag}: warming up - fast {len(st['f_bricks'])} bricks, "
@@ -942,6 +1063,7 @@ def run_strategy_d(symbol, names, st, new_closes, price):
     No trailing exit, no separate EXIT-ALL - this relies on 3Commas'
     swing-trade mode, which switches direction using only Enter Long/
     Enter Short signals."""
+    _JCTX.clear()
     enter_long, enter_short, _ = codes_for(names)
     tag = f"D/{symbol}"
     keep = max(D_TEMA * 3, D_ALMA) + 40
@@ -964,6 +1086,7 @@ def run_strategy_d(symbol, names, st, new_closes, price):
         if d == 0:
             continue
         latest = st["bricks"][-1]
+        _JCTX["brick_value"] = latest
 
         if d == st.get("streak_dir", 0):
             st["streak_len"] = st.get("streak_len", 0) + 1
@@ -1103,6 +1226,7 @@ def main():
                         f"complete yet, price {price:.4f}")
                     continue
 
+                _SIG_CTX["state"], _SIG_CTX["hour"] = state, st.get("hour_bucket")
                 if strategy == "A":
                     run_strategy_a(symbol, names, st, hourly, price)
                 elif strategy == "B":
