@@ -484,14 +484,14 @@
     ],
     "anchor": 4.688979846570133,
     "direction": -1,
-    "last_ms": 1791766500000,
+    "last_ms": 1791766860000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "hour_bucket": 497712,
-    "hour_close": 111.49,
-    "last_eval_ms": 1791763294612,
-    "last_eval_hour": 111.35
+    "hour_bucket": 497713,
+    "hour_close": 111.76,
+    "last_eval_ms": 1791766887593,
+    "last_eval_hour": 111.64
   },
   "A:XRPUSDT": {
     "bricks": [
@@ -978,14 +978,14 @@
     ],
     "anchor": 0.3463451023034753,
     "direction": 1,
-    "last_ms": 1791766500000,
+    "last_ms": 1791766860000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
-    "hour_bucket": 497712,
-    "hour_close": 1.4086,
-    "last_eval_ms": 1791763295345,
-    "last_eval_hour": 1.4103
+    "hour_bucket": 497713,
+    "hour_close": 1.4105,
+    "last_eval_ms": 1791766888208,
+    "last_eval_hour": 1.4097
   },
   "B:SOLUSDT": {
     "f_bricks": [
@@ -1166,15 +1166,15 @@
     "f_direction": 1,
     "s_anchor": 4.806878239155547,
     "s_direction": 1,
-    "last_ms": 1791766500000,
+    "last_ms": 1791766860000,
     "position": 0,
     "best": 0.0,
     "trades": 1,
     "prev_agree": 0,
-    "hour_bucket": 497712,
-    "hour_close": 111.49,
-    "last_eval_ms": 1791763295918,
-    "last_eval_hour": 111.35
+    "hour_bucket": 497713,
+    "hour_close": 111.77,
+    "last_eval_ms": 1791766888822,
+    "last_eval_hour": 111.64
   },
   "B:XRPUSDT": {
     "f_bricks": [
@@ -1355,15 +1355,15 @@
     "f_direction": 1,
     "s_anchor": 0.30042988994722225,
     "s_direction": -1,
-    "last_ms": 1791766500000,
+    "last_ms": 1791766860000,
     "position": 0,
     "best": 0.0,
     "trades": 2,
     "prev_agree": 1,
-    "hour_bucket": 497712,
-    "hour_close": 1.4086,
-    "last_eval_ms": 1791763296620,
-    "last_eval_hour": 1.4103
+    "hour_bucket": 497713,
+    "hour_close": 1.4105,
+    "last_eval_ms": 1791766889442,
+    "last_eval_hour": 1.4097
   },
   "C:SOLUSDT": {
     "f_bricks": [
@@ -1544,15 +1544,14 @@
     "f_direction": 1,
     "s_anchor": 4.806878239155547,
     "s_direction": 1,
-    "last_ms": 1791766500000,
+    "last_ms": 1791766860000,
     "position": 0,
     "best": 0.0,
     "trades": 1,
     "prev_agree": 0,
-    "hour_bucket": 497712,
-    "hour_close": 111.49,
+    "hour_bucket": 497713,
+    "hour_close": 111.8,
     "price_history": [
-      101.93,
       102.0,
       101.86,
       101.64,
@@ -2271,10 +2270,11 @@
       111.35,
       110.76,
       111.09,
-      111.35
+      111.35,
+      111.64
     ],
-    "last_eval_ms": 1791763297174,
-    "last_eval_hour": 111.35
+    "last_eval_ms": 1791766890083,
+    "last_eval_hour": 111.64
   },
   "C:XRPUSDT": {
     "f_bricks": [
@@ -2455,15 +2455,14 @@
     "f_direction": 1,
     "s_anchor": 0.30042988994722225,
     "s_direction": -1,
-    "last_ms": 1791766500000,
+    "last_ms": 1791766860000,
     "position": 0,
     "best": 0.0,
     "trades": 0,
     "prev_agree": 0,
-    "hour_bucket": 497712,
-    "hour_close": 1.4086,
+    "hour_bucket": 497713,
+    "hour_close": 1.4109,
     "price_history": [
-      1.3569,
       1.361,
       1.3637,
       1.3641,
@@ -3182,14 +3181,14 @@
       1.412,
       1.405,
       1.4082,
-      1.4103
+      1.4103,
+      1.4097
     ],
-    "last_eval_ms": 1791763297727,
-    "last_eval_hour": 1.4103
+    "last_eval_ms": 1791766890709,
+    "last_eval_hour": 1.4097
   },
   "D:SOLUSDT": {
     "bricks": [
-      123.19678198863289,
       121.72944213647996,
       121.00233908094255,
       120.27957909018957,
@@ -3318,20 +3317,21 @@
       111.93592878482349,
       112.27173657117793,
       111.60112540859762,
-      110.93451987864681
+      110.93451987864681,
+      111.60112540859762
     ],
-    "anchor": 4.708940116243197,
-    "direction": -1,
-    "last_ms": 1791766500000,
+    "anchor": 4.714931134202795,
+    "direction": 1,
+    "last_ms": 1791766860000,
     "position": -1,
     "trades": 4,
     "streak_dir": -1,
-    "streak_len": 41,
-    "hour_bucket": 497712,
-    "hour_close": 111.49,
+    "streak_len": 42,
+    "hour_bucket": 497713,
+    "hour_close": 111.83,
     "streak_fired": true,
-    "last_eval_ms": 1791763298299,
-    "last_eval_hour": 111.35
+    "last_eval_ms": 1791766891460,
+    "last_eval_hour": 111.64
   },
   "D:XRPUSDT": {
     "bricks": [
@@ -3468,15 +3468,15 @@
     ],
     "anchor": 0.3414880236970327,
     "direction": -1,
-    "last_ms": 1791766500000,
+    "last_ms": 1791766860000,
     "position": -1,
     "trades": 8,
     "streak_dir": -1,
     "streak_len": 43,
-    "hour_bucket": 497712,
-    "hour_close": 1.4086,
+    "hour_bucket": 497713,
+    "hour_close": 1.4109,
     "streak_fired": true,
-    "last_eval_ms": 1791763298842,
-    "last_eval_hour": 1.4103
+    "last_eval_ms": 1791766892078,
+    "last_eval_hour": 1.4097
   }
 }
