@@ -47711,3 +47711,30 @@
 2026-10-13 13:41:02 IST  D/XRPUSDT: 6 min, hour not complete yet, price 1.3808
 2026-10-13 13:41:02 IST  done
 2026-10-13 13:41:02 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
+2026-10-13 13:45:56 IST  ============================================================
+2026-10-13 13:45:57 IST    retry 1 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:01 IST    retry 2 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:05 IST  A/SOLUSDT: ERROR HTTPError: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:05 IST    retry 1 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:09 IST    retry 2 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:12 IST  A/XRPUSDT: ERROR HTTPError: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:13 IST    retry 1 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:17 IST    retry 2 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:20 IST  B/SOLUSDT: ERROR HTTPError: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:21 IST    retry 1 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:24 IST    retry 2 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:28 IST  B/XRPUSDT: ERROR HTTPError: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:29 IST    retry 1 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:32 IST    retry 2 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:36 IST  C/SOLUSDT: ERROR HTTPError: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:36 IST    retry 1 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:40 IST    retry 2 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:44 IST  C/XRPUSDT: ERROR HTTPError: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:44 IST    retry 1 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:48 IST    retry 2 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:51 IST  D/SOLUSDT: ERROR HTTPError: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:52 IST    retry 1 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:55 IST    retry 2 after error: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:59 IST  D/XRPUSDT: ERROR HTTPError: HTTP Error 418: I'm a teapot
+2026-10-13 13:46:59 IST  done
+2026-10-13 13:46:59 IST    STALENESS: OK - worst last_ms is 0.1h behind (threshold 1h, 8 strategies checked)
