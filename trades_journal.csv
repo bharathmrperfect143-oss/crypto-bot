@@ -7,3 +7,4 @@ signal_id,ts_signal_utc,strategy,symbol,action,brick_value,fast_dir,slow_dir,d_d
 1791385305_D_SOLUSDT_ENTER_SHORT,2026-10-07T15:01:45Z,D,SOLUSDT,ENTER_SHORT,,,,-1,,1000,,,,,,15,Wed,,,0,,,,,,,sent,wtalerts http 200
 1791475284_B_SOLUSDT_EXIT_ALL,2026-10-08T16:01:24Z,B,SOLUSDT,EXIT_ALL,,,,,,1000,,,,,,16,Thu,,,0,6aad48792df88e102056587b,,108.54,,,28901.7,exited,wtalerts http 200
 1791482481_C_SOLUSDT_EXIT_ALL,2026-10-08T18:01:21Z,C,SOLUSDT,EXIT_ALL,,,,,,1000,,,,,,18,Thu,,,0,6ac65ed545b7eabd39da102d,,106.42,,,1619.6,exited,wtalerts http 200
+1792483312_D_SOLUSDT_ENTER_LONG,2026-10-20T08:01:52Z,D,SOLUSDT,ENTER_LONG,104.48358070788129,,,1,,1000,81476.01,-0.112,-0.75,-1.624,,8,Tue,accepted,200,,,,,,,,sent,wtalerts http 200
