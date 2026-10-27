@@ -94049,3 +94049,14 @@
 2026-10-27 21:26:26 IST  D/XRPUSDT: 5 min, hour not complete yet, price 1.3201
 2026-10-27 21:26:26 IST  done
 2026-10-27 21:26:26 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
+2026-10-27 21:32:07 IST  ============================================================
+2026-10-27 21:32:08 IST  A/SOLUSDT: flat. brick 100.3891  channel 62.1468 .. 127.5912
+2026-10-27 21:32:08 IST  A/XRPUSDT: flat. brick 1.2710  channel 1.0000 .. 1.6590
+2026-10-27 21:32:09 IST  B/SOLUSDT: flat. fast -1  slow +1  brick 100.8881  trades 1
+2026-10-27 21:32:10 IST  B/XRPUSDT: flat. fast -1  slow +1  brick 1.2936  trades 2
+2026-10-27 21:32:11 IST  C/SOLUSDT: flat. fast -1  slow +1  brick 100.8881  trades 1
+2026-10-27 21:32:11 IST  C/XRPUSDT: flat. fast -1  slow +1  brick 1.2936  trades 0
+2026-10-27 21:32:12 IST  D/SOLUSDT: holding SHORT. dir -1  brick 100.7945  trades 6  streak 34/8
+2026-10-27 21:32:13 IST  D/XRPUSDT: holding SHORT. dir +1  brick 1.3173  trades 10  streak 3/8
+2026-10-27 21:32:13 IST  done
+2026-10-27 21:32:13 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
