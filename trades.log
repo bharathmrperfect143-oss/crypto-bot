@@ -20757,3 +20757,20 @@
 2026-11-10 19:27:12 IST  D/XRPUSDT: 5 min, hour not complete yet, price 1.0655
 2026-11-10 19:27:12 IST  done
 2026-11-10 19:27:12 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
+2026-11-10 19:32:28 IST  ============================================================
+2026-11-10 19:32:29 IST  A/SOLUSDT: flat. brick 85.5587  channel 62.1468 .. 124.2368
+2026-11-10 19:32:29 IST  A/XRPUSDT: flat. brick 1.0832  channel 1.0000 .. 1.6590
+2026-11-10 19:32:30 IST  B/SOLUSDT: flat. fast -1  slow +1  brick 84.4187  trades 1
+2026-11-10 19:32:30 IST  B/XRPUSDT: SHORT entry - both timeframes bearish, brick 1.0824
+2026-11-10 19:32:31 IST    SENT B/XRPUSDT ENTER-SHORT  amount=1000 USDT  (http 200)
+2026-11-10 19:32:31 IST    journal: funding unavailable for XRPUSDT (HTTPError)
+2026-11-10 19:32:34 IST  B/XRPUSDT: holding SHORT. fast -1  slow -1  brick 1.0824  trades 3
+2026-11-10 19:32:35 IST  C/SOLUSDT: flat. fast -1  slow +1  brick 84.4187  trades 1
+2026-11-10 19:32:35 IST    C/XRPUSDT: VOL-SIZING - realized vol 54.2% (target 40%, band 30%-100%), base 1000 USDT -> size 738.24 USDT from 720 hourly closes
+2026-11-10 19:32:35 IST  C/XRPUSDT: SHORT entry - both timeframes bearish, brick 1.0824, realized vol 54.2% -> size 738.24 USDT
+2026-11-10 19:32:36 IST    SENT C/XRPUSDT ENTER-SHORT  amount=738.24 USDT  (http 200)
+2026-11-10 19:32:39 IST  C/XRPUSDT: holding SHORT. fast -1  slow -1  brick 1.0824  trades 1
+2026-11-10 19:32:39 IST  D/SOLUSDT: holding SHORT. dir -1  brick 84.2133  trades 10  streak 39/8
+2026-11-10 19:32:40 IST  D/XRPUSDT: holding SHORT. dir -1  brick 1.0681  trades 14  streak 49/8
+2026-11-10 19:32:40 IST  done
+2026-11-10 19:32:40 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
