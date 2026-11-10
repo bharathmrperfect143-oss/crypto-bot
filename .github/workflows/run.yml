@@ -99,6 +99,19 @@ jobs:
           # `[ -f FILE ]` lets a missing CSV skip silently while
           # state.json and trades.log still commit. This was the cause
           # of every "nothing changed" since the previous fix.
+          # Hark 2026-11-10: rotate trades.log when it passes 3 MB. Keep the
+          # newest 20000 lines live; gzip the older part into logs/ so the
+          # repo stops re-committing a 10 MB file every 5 minutes.
+          # bot.py, reconcile and check_secrets only append to trades.log.
+          if [ -f trades.log ] && [ "$(stat -c %s trades.log)" -gt 3000000 ]; then
+            mkdir -p logs
+            n=$(wc -l < trades.log); keep=20000
+            if [ "$n" -gt "$keep" ]; then
+              head -n $((n-keep)) trades.log | gzip -9 > "logs/trades-$(date -u +%Y%m%d-%H%M).log.gz"
+              tail -n $keep trades.log > trades.log.tmp && mv trades.log.tmp trades.log
+              git add logs || true
+            fi
+          fi || true
           [ -f state.json ]       && git add state.json       || true
           [ -f trades.log ]       && git add trades.log       || true
           [ -f trades_journal.csv ] && git add trades_journal.csv || true
