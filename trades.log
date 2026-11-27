@@ -20427,3 +20427,19 @@
 2026-11-27 15:27:04 IST  D/XRPUSDT: 5 min, hour not complete yet, price 0.9787
 2026-11-27 15:27:04 IST  done
 2026-11-27 15:27:04 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
+2026-11-27 15:33:07 IST  ============================================================
+2026-11-27 15:33:08 IST  A/SOLUSDT: flat. brick 72.9191  channel 62.1468 .. 124.2368
+2026-11-27 15:33:09 IST  A/XRPUSDT: flat. brick 0.9737  channel 0.8753 .. 1.6590
+2026-11-27 15:33:09 IST  B/SOLUSDT: SHORT exit - fast flipped, brick 73.4915, best 67.8948
+2026-11-27 15:33:10 IST    SENT B/SOLUSDT EXIT-ALL  amount=1000 USDT  (http 200)
+2026-11-27 15:33:11 IST    journal: funding unavailable for SOLUSDT (HTTPError)
+2026-11-27 15:33:13 IST  B/SOLUSDT: flat. fast +1  slow -1  brick 73.4915  trades 3
+2026-11-27 15:33:13 IST  B/XRPUSDT: flat. fast -1  slow -1  brick 0.9612  trades 3
+2026-11-27 15:33:14 IST  C/SOLUSDT: SHORT exit - fast flipped, brick 73.4915, best 67.8948
+2026-11-27 15:33:14 IST    SENT C/SOLUSDT EXIT-ALL  amount=1000 USDT  (http 200)
+2026-11-27 15:33:16 IST  C/SOLUSDT: flat. fast +1  slow -1  brick 73.4915  trades 3
+2026-11-27 15:33:17 IST  C/XRPUSDT: flat. fast -1  slow -1  brick 0.9612  trades 1
+2026-11-27 15:33:18 IST  D/SOLUSDT: holding LONG. dir +1  brick 73.5934  trades 15  streak 10/8
+2026-11-27 15:33:18 IST  D/XRPUSDT: holding LONG. dir +1  brick 0.9763  trades 19  streak 13/8
+2026-11-27 15:33:18 IST  done
+2026-11-27 15:33:18 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
