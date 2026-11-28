@@ -22643,3 +22643,14 @@
 2026-11-28 08:07:29 IST  D/XRPUSDT: 5 min, hour not complete yet, price 0.9508
 2026-11-28 08:07:29 IST  done
 2026-11-28 08:07:29 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
+2026-11-28 08:12:40 IST  ============================================================
+2026-11-28 08:12:40 IST  A/SOLUSDT: 5 min, hour not complete yet, price 71.7200
+2026-11-28 08:12:41 IST  A/XRPUSDT: 5 min, hour not complete yet, price 0.9504
+2026-11-28 08:12:41 IST  B/SOLUSDT: 5 min, hour not complete yet, price 71.7200
+2026-11-28 08:12:42 IST  B/XRPUSDT: 5 min, hour not complete yet, price 0.9504
+2026-11-28 08:12:43 IST  C/SOLUSDT: 5 min, hour not complete yet, price 71.7200
+2026-11-28 08:12:43 IST  C/XRPUSDT: 5 min, hour not complete yet, price 0.9504
+2026-11-28 08:12:44 IST  D/SOLUSDT: 5 min, hour not complete yet, price 71.7000
+2026-11-28 08:12:44 IST  D/XRPUSDT: 5 min, hour not complete yet, price 0.9504
+2026-11-28 08:12:44 IST  done
+2026-11-28 08:12:44 IST    STALENESS: OK - worst last_ms is 0.0h behind (threshold 1h, 8 strategies checked)
